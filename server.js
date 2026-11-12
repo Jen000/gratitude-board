@@ -17,9 +17,12 @@ const PORT = Number(process.env.PORT) || 3000;
 const ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
 const CODE_LENGTH = 6;
 const MAX_TITLE = 60;
-const MAX_NAME = 40;
 const MAX_TEXT = 500;
 const MAX_BODY_BYTES = 10_000;
+// The markers and handwriting people can choose from. The site (public/app.js) offers the same lists.
+const COLORS = ['black', 'blue', 'red', 'green', 'purple', 'orange', 'pink', 'teal'];
+const FONTS = ['caveat', 'kalam', 'indie', 'shadows', 'gloria', 'marker'];
+const pick = (value, allowed) => (allowed.includes(value) ? value : allowed[0]);
 
 await mkdir(DATA_DIR, { recursive: true });
 const db = new DatabaseSync(join(DATA_DIR, 'gratitude.db'));
@@ -43,14 +46,16 @@ db.exec(`
 const entryColumns = new Set(db.prepare('PRAGMA table_info(entries)').all().map((c) => c.name));
 if (!entryColumns.has('author_key')) db.exec('ALTER TABLE entries ADD COLUMN author_key TEXT');
 if (!entryColumns.has('edited_at')) db.exec('ALTER TABLE entries ADD COLUMN edited_at INTEGER');
+if (!entryColumns.has('color')) db.exec('ALTER TABLE entries ADD COLUMN color TEXT');
+if (!entryColumns.has('font')) db.exec('ALTER TABLE entries ADD COLUMN font TEXT');
 
 const q = {
   insertBoard: db.prepare('INSERT INTO boards (code, title, created_at) VALUES (?, ?, ?)'),
   getBoard: db.prepare('SELECT code, title, created_at AS createdAt FROM boards WHERE code = ?'),
   getEntries: db.prepare(
-    'SELECT id, name, text, created_at AS createdAt, edited_at AS editedAt, author_key AS authorKey FROM entries WHERE board_code = ? ORDER BY created_at DESC, id DESC'
+    'SELECT id, text, color, font, created_at AS createdAt, author_key AS authorKey FROM entries WHERE board_code = ? ORDER BY created_at DESC, id DESC'
   ),
-  insertEntry: db.prepare('INSERT INTO entries (board_code, name, text, created_at, author_key) VALUES (?, ?, ?, ?, ?)'),
+  insertEntry: db.prepare("INSERT INTO entries (board_code, name, text, color, font, created_at, author_key) VALUES (?, '', ?, ?, ?, ?, ?)"),
   getEntry: db.prepare('SELECT author_key AS authorKey FROM entries WHERE id = ? AND board_code = ?'),
   updateEntry: db.prepare('UPDATE entries SET text = ?, edited_at = ? WHERE id = ?'),
   deleteEntry: db.prepare('DELETE FROM entries WHERE id = ?'),
@@ -118,8 +123,11 @@ function authorKey(req) {
 function boardPayload(code, key) {
   const board = q.getBoard.get(code);
   if (!board) return null;
+  // Notes are anonymous: nothing about who wrote one leaves the server, except "this one is yours".
   const entries = q.getEntries.all(code).map(({ authorKey: owner, ...entry }) => ({
     ...entry,
+    color: pick(entry.color, COLORS),
+    font: pick(entry.font, FONTS),
     mine: Boolean(key && owner && owner === key),
   }));
   return { ...board, entries };
@@ -162,11 +170,9 @@ async function handleApi(req, res, path) {
     if (limited(ip, 'post', 60, 600_000)) return send(res, 429, { error: 'Slow down a little and try again.' });
     if (!q.getBoard.get(code)) return send(res, 404, { error: "We couldn't find a board with that code." });
     const body = await readJson(req);
-    const name = clean(body.name, MAX_NAME);
     const text = clean(body.text, MAX_TEXT, { multiline: true });
-    if (!name) return send(res, 400, { error: 'Please add your name.' });
     if (!text) return send(res, 400, { error: 'Write something you are grateful for.' });
-    q.insertEntry.run(code, name, text, Date.now(), key);
+    q.insertEntry.run(code, text, pick(body.color, COLORS), pick(body.font, FONTS), Date.now(), key);
     return send(res, 201, boardPayload(code, key));
   }
 
@@ -198,6 +204,7 @@ const MIME = {
   '.js': 'text/javascript; charset=utf-8',
   '.svg': 'image/svg+xml',
   '.ico': 'image/x-icon',
+  '.woff2': 'font/woff2',
 };
 
 async function handleStatic(req, res, path) {
@@ -216,7 +223,7 @@ async function handleStatic(req, res, path) {
     const data = await readFile(file);
     res.writeHead(200, {
       'Content-Type': MIME[extname(file)] || 'application/octet-stream',
-      'Cache-Control': 'no-cache',
+      'Cache-Control': extname(file) === '.woff2' ? 'public, max-age=31536000, immutable' : 'no-cache',
       'X-Content-Type-Options': 'nosniff',
     });
     res.end(req.method === 'HEAD' ? undefined : data);

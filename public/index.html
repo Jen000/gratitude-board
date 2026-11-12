@@ -4,17 +4,17 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Gratitude Board</title>
-  <meta name="description" content="A shared board where you and your people add something you're grateful for, every day.">
+  <meta name="description" content="A shared whiteboard where you and your people write one good thing, every day. No names — just gratitude.">
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="preload" href="/fonts/permanent-marker.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="/style.css">
 </head>
 <body>
   <!-- ============ Home ============ -->
   <main id="home" class="view" hidden>
     <header class="hero">
-      <div class="sun" aria-hidden="true"></div>
-      <h1>Gratitude Board</h1>
-      <p id="greeting" class="lede">A shared board where you and your people add one good thing, every day.</p>
+      <h1 class="hero-title">Gratitude Board</h1>
+      <p id="greeting" class="lede"></p>
     </header>
 
     <section id="recent" class="card" hidden>
@@ -35,9 +35,7 @@
       <form id="create-form" class="card" novalidate>
         <h2>Start a new board</h2>
         <label for="create-title">Board name</label>
-        <input id="create-title" name="title" maxlength="60" placeholder="The Shaye family, Team Friday…">
-        <label for="create-name">Your name</label>
-        <input id="create-name" name="name" maxlength="40" autocomplete="given-name" placeholder="So people know it's you" required>
+        <input id="create-title" name="title" maxlength="60" placeholder="Our family, Team Friday…">
         <p class="error" id="create-error" role="alert"></p>
         <button type="submit" class="btn btn-primary">Create board</button>
       </form>
@@ -45,46 +43,56 @@
   </main>
 
   <!-- ============ Board ============ -->
-  <main id="board" class="view" hidden>
+  <main id="board" class="view view-wide" hidden>
     <nav class="topbar">
       <a href="/" id="home-link" class="back">← All boards</a>
-    </nav>
-
-    <header class="board-head">
-      <h1 id="board-title"></h1>
       <div class="share">
+        <span id="share-status" class="share-status" role="status"></span>
         <span class="share-label">Code</span>
         <button type="button" id="copy-code" class="code-chip" title="Copy code"></button>
         <button type="button" id="share-btn" class="btn btn-small">Invite people</button>
-        <span id="share-status" class="share-status" role="status"></span>
       </div>
-    </header>
+    </nav>
 
-    <form id="entry-form" class="card composer" novalidate>
-      <div id="name-row">
-        <label for="entry-name">Your name</label>
-        <input id="entry-name" name="name" maxlength="40" autocomplete="given-name" placeholder="So people know it's you" required>
-      </div>
-      <p id="posting-as" class="posting-as" hidden>
-        Adding as <strong id="posting-name"></strong>
-        <button type="button" id="change-name" class="link">change</button>
-      </p>
-      <label for="entry-text" id="entry-label">What are you grateful for today?</label>
-      <textarea id="entry-text" name="text" rows="3" maxlength="500" placeholder="Something big, something small…" required></textarea>
-      <p class="error" id="entry-error" role="alert"></p>
-      <div class="composer-foot">
-        <span id="today-status" class="muted"></span>
-        <button type="submit" class="btn btn-primary">Add to the board</button>
-      </div>
-    </form>
+    <div class="whiteboard">
+      <h1 id="board-title" class="board-title"></h1>
 
-    <section id="entries" aria-live="polite"></section>
+      <form id="entry-form" class="composer" novalidate>
+        <label for="entry-text" class="print">What are you grateful for today?</label>
+        <textarea id="entry-text" class="ink" name="text" rows="2" maxlength="500" placeholder="Something big, something small…" required></textarea>
+        <p class="error" id="entry-error" role="alert"></p>
+        <div class="tools">
+          <fieldset class="picker">
+            <legend class="print">Marker</legend>
+            <div id="color-picker" class="swatches"></div>
+          </fieldset>
+          <fieldset class="picker">
+            <legend class="print">Handwriting</legend>
+            <div id="font-picker" class="hands"></div>
+          </fieldset>
+        </div>
+        <div class="composer-foot">
+          <button type="submit" class="btn btn-primary">Write it on the board</button>
+          <span id="today-status" class="print"></span>
+        </div>
+        <p class="print anon">No names here. Nobody can see who wrote what.</p>
+      </form>
+
+      <section id="entries" aria-live="polite"></section>
+    </div>
+    <div class="tray" aria-hidden="true">
+      <span class="pen" style="--cap:#23262b"></span>
+      <span class="pen" style="--cap:#1d4fd8"></span>
+      <span class="pen" style="--cap:#d42a2a"></span>
+      <span class="pen" style="--cap:#15803d"></span>
+      <span class="eraser"></span>
+    </div>
   </main>
 
   <!-- ============ Not found ============ -->
   <main id="missing" class="view" hidden>
     <div class="card center">
-      <h1>We couldn't find that board</h1>
+      <h1 class="hero-title">We couldn't find that board</h1>
       <p class="lede">Double-check the code — it's six letters and numbers.</p>
       <a href="/" class="btn">Back to start</a>
     </div>

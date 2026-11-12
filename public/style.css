@@ -1,40 +1,59 @@
+/* Handwriting fonts, served from this site (see README for licences). */
+@font-face { font-family: "Caveat"; src: url("/fonts/caveat.woff2") format("woff2"); font-weight: 400 700; font-display: swap; }
+@font-face { font-family: "Kalam"; src: url("/fonts/kalam.woff2") format("woff2"); font-display: swap; }
+@font-face { font-family: "Indie Flower"; src: url("/fonts/indie-flower.woff2") format("woff2"); font-display: swap; }
+@font-face { font-family: "Shadows Into Light"; src: url("/fonts/shadows-into-light.woff2") format("woff2"); font-display: swap; }
+@font-face { font-family: "Gloria Hallelujah"; src: url("/fonts/gloria-hallelujah.woff2") format("woff2"); font-display: swap; }
+@font-face { font-family: "Permanent Marker"; src: url("/fonts/permanent-marker.woff2") format("woff2"); font-display: swap; }
+
 :root {
-  --bg: #fbf5ea;
-  --bg-glow: #ffe9c2;
-  --surface: #fffdf8;
-  --ink: #2c2418;
-  --muted: #75695a;
-  --line: #e9dcc5;
-  --accent: #c9651b;
+  /* the wall around the board */
+  --bg: #e9e4db;
+  --surface: #fbfaf7;
+  --ink: #26282c;
+  --muted: #6a6862;
+  --line: #d6d0c4;
+  --accent: #1d4fd8;
   --accent-ink: #fff;
-  --accent-soft: #fbe6cf;
+  --accent-soft: #e4ebfb;
   --error: #b3261e;
-  --note-l: 93%;
-  --note-s: 75%;
-  --note-ink: #2c2418;
-  --shadow: 0 1px 2px rgb(70 50 20 / 0.06), 0 6px 20px rgb(70 50 20 / 0.07);
-  --radius: 16px;
+  --shadow: 0 1px 2px rgb(40 35 25 / 0.08), 0 8px 24px rgb(40 35 25 / 0.1);
+  --radius: 14px;
+  --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   color-scheme: light;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #1b1712;
-    --bg-glow: #33260f;
-    --surface: #26201a;
-    --ink: #f3eadc;
-    --muted: #ac9f8c;
-    --line: #3b3228;
-    --accent: #f0a04b;
-    --accent-ink: #1b1712;
-    --accent-soft: #3a2a17;
+    --bg: #22211f;
+    --surface: #2e2d2a;
+    --ink: #efede8;
+    --muted: #a9a59c;
+    --line: #45433e;
+    --accent: #8fb0ff;
+    --accent-ink: #14161a;
+    --accent-soft: #2f3850;
     --error: #ff8a80;
-    --note-l: 22%;
-    --note-s: 35%;
-    --note-ink: #f3eadc;
-    --shadow: 0 1px 2px rgb(0 0 0 / 0.3), 0 6px 20px rgb(0 0 0 / 0.25);
+    --shadow: 0 1px 2px rgb(0 0 0 / 0.3), 0 8px 24px rgb(0 0 0 / 0.3);
     color-scheme: dark;
   }
+}
+
+/* marker colours and handwriting, shared by the pickers, the composer and the notes */
+.c-black { --pen: #23262b; } .c-blue { --pen: #1d4fd8; } .c-red { --pen: #d42a2a; } .c-green { --pen: #15803d; }
+.c-purple { --pen: #7c3aed; } .c-orange { --pen: #e2640c; } .c-pink { --pen: #db2777; } .c-teal { --pen: #0d8f8f; }
+.f-caveat { --hand: "Caveat"; --size: 1.8rem; --weight: 600; --lh: 1.15; }
+.f-kalam { --hand: "Kalam"; --size: 1.35rem; --lh: 1.4; }
+.f-indie { --hand: "Indie Flower"; --size: 1.5rem; --lh: 1.3; }
+.f-shadows { --hand: "Shadows Into Light"; --size: 1.6rem; --lh: 1.3; }
+.f-gloria { --hand: "Gloria Hallelujah"; --size: 1.2rem; --lh: 1.6; }
+.f-marker { --hand: "Permanent Marker"; --size: 1.35rem; --lh: 1.35; }
+.ink {
+  color: var(--pen, #23262b);
+  font-family: var(--hand, "Caveat"), "Segoe Print", "Bradley Hand", cursive;
+  font-size: var(--size, 1.5rem);
+  font-weight: var(--weight, 400);
+  line-height: var(--lh, 1.3);
 }
 
 * { box-sizing: border-box; }
@@ -43,38 +62,23 @@
 body {
   margin: 0;
   min-height: 100vh;
-  background: radial-gradient(900px 420px at 50% -120px, var(--bg-glow), transparent 70%), var(--bg);
-  background-repeat: no-repeat;
+  background: var(--bg);
   color: var(--ink);
-  font: 17px/1.55 ui-rounded, "Nunito", "Segoe UI", system-ui, -apple-system, sans-serif;
+  font: 17px/1.55 var(--sans);
   -webkit-text-size-adjust: 100%;
 }
 
-.view {
-  max-width: 880px;
-  margin: 0 auto;
-  padding: 24px 16px 72px;
-}
+.view { max-width: 880px; margin: 0 auto; padding: 24px 16px 72px; }
+.view-wide { max-width: 1180px; }
 
-h1, h2 {
-  font-family: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
-  line-height: 1.15;
-  margin: 0;
-  text-wrap: balance;
-}
-h1 { font-size: clamp(2rem, 6vw, 3rem); letter-spacing: -0.01em; }
-h2 { font-size: 1.3rem; margin-bottom: 14px; }
+h1, h2 { line-height: 1.15; margin: 0; text-wrap: balance; }
+h2 { font-size: 1.2rem; margin-bottom: 14px; }
+.hero-title { font-family: "Permanent Marker", "Segoe Print", cursive; font-weight: 400; font-size: clamp(2.2rem, 7vw, 3.4rem); }
 
 .lede { color: var(--muted); font-size: 1.1rem; margin: 10px auto 0; max-width: 34em; text-wrap: balance; }
-.muted { color: var(--muted); font-size: 0.92rem; }
 
 /* ---------- Home ---------- */
-.hero { text-align: center; padding: 36px 0 32px; }
-.sun {
-  width: 56px; height: 56px; margin: 0 auto 18px; border-radius: 50%;
-  background: radial-gradient(circle at 35% 35%, #ffd27a, #f2a33a);
-  box-shadow: 0 0 0 10px rgb(242 163 58 / 0.18), 0 0 0 22px rgb(242 163 58 / 0.08);
-}
+.hero { text-align: center; padding: 40px 0 32px; }
 
 .card {
   background: var(--surface);
@@ -92,7 +96,7 @@ h2 { font-size: 1.3rem; margin-bottom: 14px; }
 .recent-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
 .recent-list a {
   display: flex; align-items: center; justify-content: space-between; gap: 12px;
-  padding: 12px 14px; border-radius: 12px; background: var(--accent-soft);
+  padding: 12px 14px; border-radius: 10px; background: var(--accent-soft);
   color: var(--ink); text-decoration: none; font-weight: 600;
 }
 .recent-list a:hover { outline: 2px solid var(--accent); }
@@ -103,101 +107,148 @@ h2 { font-size: 1.3rem; margin-bottom: 14px; }
 label { display: block; font-weight: 600; font-size: 0.92rem; margin: 12px 0 6px; }
 h2 + label { margin-top: 0; }
 
-input, textarea {
-  width: 100%;
-  font: inherit;
-  color: var(--ink);
-  background: var(--bg);
-  border: 1.5px solid var(--line);
-  border-radius: 12px;
-  padding: 11px 13px;
+input:not([type=radio]) {
+  width: 100%; font: inherit; color: var(--ink); background: var(--bg);
+  border: 1.5px solid var(--line); border-radius: 10px; padding: 11px 13px;
 }
-textarea { resize: vertical; min-height: 5.5em; }
 input::placeholder, textarea::placeholder { color: var(--muted); opacity: 0.75; }
 input:focus-visible, textarea:focus-visible, button:focus-visible, a:focus-visible {
   outline: 2.5px solid var(--accent); outline-offset: 2px;
 }
 
 .code-input {
-  font: 700 1.35rem ui-monospace, Menlo, Consolas, monospace;
+  font: 700 1.35rem ui-monospace, Menlo, Consolas, monospace !important;
   letter-spacing: 0.25em; text-transform: uppercase; text-align: center;
 }
-.code-input::placeholder { letter-spacing: 0.25em; font-weight: 400; }
+.code-input::placeholder { font-weight: 400; }
 
 .btn {
   display: inline-flex; align-items: center; justify-content: center;
-  font: inherit; font-weight: 700; cursor: pointer; text-decoration: none;
+  font: 700 1rem var(--sans); cursor: pointer; text-decoration: none;
   color: var(--ink); background: transparent;
   border: 1.5px solid var(--ink); border-radius: 999px;
   padding: 11px 22px; min-height: 46px;
   transition: transform 0.08s ease, filter 0.15s ease;
 }
 form.card > .btn { width: 100%; margin-top: 16px; }
-.btn:hover { filter: brightness(1.08); }
+.btn:hover { filter: brightness(1.1); }
 .btn:active { transform: scale(0.98); }
 .btn:disabled { opacity: 0.6; cursor: progress; }
 .btn-primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
 .btn-small { padding: 6px 16px; min-height: 38px; font-size: 0.92rem; }
+.btn-danger { background: var(--error); border-color: var(--error); color: #fff; }
 
-.link { font: inherit; color: var(--accent); background: none; border: 0; padding: 0 2px; cursor: pointer; text-decoration: underline; }
+.link { font: inherit; color: inherit; background: none; border: 0; padding: 0 2px; cursor: pointer; text-decoration: underline; }
 
-.error { color: var(--error); font-size: 0.92rem; margin: 8px 0 0; min-height: 0; }
+.error { color: var(--error); font: 0.92rem var(--sans); margin: 8px 0 0; }
 .error:empty { display: none; }
 
-/* ---------- Board ---------- */
-.topbar { margin-bottom: 18px; }
+/* ---------- Board page ---------- */
+.topbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 16px; margin-bottom: 18px; }
 .back { color: var(--muted); text-decoration: none; font-weight: 600; font-size: 0.95rem; }
 .back:hover { color: var(--ink); }
-
-.board-head { margin-bottom: 22px; }
-.board-head h1 { overflow-wrap: anywhere; }
-.share { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 14px; }
-.share-label { color: var(--muted); font-size: 0.85rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; }
+.share { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.share-label { color: var(--muted); font-size: 0.8rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; }
 .code-chip {
-  font: 700 1.1rem ui-monospace, Menlo, Consolas, monospace; letter-spacing: 0.2em;
-  color: var(--ink); background: var(--accent-soft); border: 1.5px dashed var(--accent);
+  font: 700 1.05rem ui-monospace, Menlo, Consolas, monospace; letter-spacing: 0.2em;
+  color: var(--ink); background: var(--surface); border: 1.5px dashed var(--muted);
   border-radius: 10px; padding: 5px 8px 5px 12px; min-height: 38px; cursor: pointer;
 }
 .share-status { color: var(--muted); font-size: 0.9rem; }
 
-.composer { margin-bottom: 30px; }
-.composer label:first-of-type { margin-top: 0; }
-#entry-label { font-family: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif; font-size: 1.25rem; font-weight: 700; }
-.posting-as { margin: 0 0 12px; color: var(--muted); font-size: 0.95rem; }
-.posting-as strong { color: var(--ink); }
-.composer-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin-top: 14px; }
+/* The whiteboard itself is always white, whatever the device theme. */
+.whiteboard {
+  --ink: #26282c; --muted: #7b7f86; --accent: #1d4fd8; --accent-ink: #fff; --error: #b3261e;
+  color-scheme: light;
+  color: var(--ink);
+  position: relative;
+  min-height: 70vh;
+  padding: clamp(18px, 4vw, 44px);
+  background:
+    linear-gradient(115deg, transparent 0 38%, rgb(255 255 255 / 0.9) 46%, transparent 54%),
+    radial-gradient(60% 40% at 80% 90%, rgb(120 130 150 / 0.06), transparent 70%),
+    radial-gradient(40% 30% at 12% 30%, rgb(120 130 150 / 0.05), transparent 70%),
+    #f9faf9;
+  border: clamp(8px, 1.4vw, 14px) solid #c3c7cc;
+  border-color: #d3d6da #b4b8be #a9adb3 #c6c9ce;
+  border-radius: 12px;
+  box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.12), inset 0 2px 10px rgb(0 0 0 / 0.07), 0 18px 40px rgb(0 0 0 / 0.22);
+}
 
-.day { margin-bottom: 28px; }
+.board-title {
+  font-family: "Permanent Marker", "Segoe Print", cursive; font-weight: 400;
+  font-size: clamp(1.9rem, 5.5vw, 3rem); text-align: center; overflow-wrap: anywhere;
+  margin: 0 auto 28px; padding-bottom: 10px; max-width: 22em;
+  background: no-repeat bottom center / min(100%, 340px) 8px
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 340 8' preserveAspectRatio='none'%3E%3Cpath d='M3 5c40-4 78 2 118-1s80-3 120 0 60 2 96-1' fill='none' stroke='%2326282c' stroke-width='3' stroke-linecap='round'/%3E%3C/svg%3E");
+}
+
+.print { font: 600 0.82rem var(--sans); color: var(--muted); letter-spacing: 0.02em; margin: 0; padding: 0; }
+
+.composer { max-width: 720px; margin: 0 auto 40px; }
+.composer > label { margin: 0 0 4px; font-size: 0.95rem; }
+.composer textarea {
+  display: block; width: 100%; resize: none; overflow: hidden; min-height: 2.6em;
+  background: transparent; border: 0; border-bottom: 2px dashed #c9cdd3; border-radius: 0;
+  padding: 6px 2px 8px;
+}
+.composer textarea:focus-visible { outline: none; border-bottom-color: var(--pen); }
+.composer textarea::placeholder { color: #a5a9b0; opacity: 1; }
+
+.tools { display: flex; flex-wrap: wrap; gap: 14px 32px; margin-top: 16px; }
+.picker { border: 0; margin: 0; padding: 0; min-width: 0; }
+.picker legend { margin-bottom: 8px; }
+.swatches, .hands { display: flex; flex-wrap: wrap; gap: 8px; }
+.picker input { position: absolute; opacity: 0; pointer-events: none; }
+.swatch {
+  display: block; width: 34px; height: 34px; border-radius: 50%; cursor: pointer; margin: 0;
+  background: var(--pen); border: 3px solid #f9faf9; box-shadow: 0 0 0 1.5px #c9cdd3;
+}
+input:checked + .swatch { box-shadow: 0 0 0 3px var(--pen); }
+input:focus-visible + .swatch, input:focus-visible + .hand { outline: 2.5px solid var(--accent); outline-offset: 3px; }
+.hand {
+  display: flex; align-items: center; justify-content: center; cursor: pointer; margin: 0;
+  min-width: 78px; height: 44px; padding: 0 12px; border-radius: 10px;
+  border: 1.5px solid #d5d8dd; font-size: calc(var(--size) * 0.82); line-height: 1; white-space: nowrap;
+}
+input:checked + .hand { border-color: var(--pen); box-shadow: 0 0 0 1.5px var(--pen); }
+
+.composer-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; margin-top: 20px; }
+.anon { margin-top: 12px; font-weight: 400; }
+
+/* ---------- Writing on the board ---------- */
+.day { margin-bottom: 34px; }
 .day-label {
-  display: flex; align-items: center; gap: 12px; margin: 0 0 12px;
-  font: 700 0.85rem/1 inherit; font-family: inherit; color: var(--muted);
-  text-transform: uppercase; letter-spacing: 0.1em;
+  font: 400 1.05rem "Permanent Marker", "Segoe Print", cursive; color: #8d9198;
+  margin: 0 0 18px; display: inline-block; padding: 0 2px 2px; border-bottom: 2px solid #b9bdc4;
+  border-radius: 0 0 60% 40% / 0 0 4px 3px; transform: rotate(-1deg);
 }
-.day-label::after { content: ""; flex: 1; height: 1px; background: var(--line); }
-
-.notes { display: grid; gap: 14px; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); }
-.note {
-  background: hsl(var(--hue) var(--note-s) var(--note-l));
-  color: var(--note-ink);
-  border-radius: 4px 14px 14px 14px;
-  padding: 16px 18px 14px;
-  box-shadow: var(--shadow);
-  display: flex; flex-direction: column; gap: 12px;
-}
-.note.fresh { animation: pop 0.35s ease-out; }
-@keyframes pop { from { transform: scale(0.94) translateY(6px); opacity: 0; } }
+.notes { columns: 3 230px; column-gap: clamp(24px, 4vw, 52px); }
+.note { break-inside: avoid; margin: 0 0 30px; padding: 2px 4px; transform: rotate(var(--tilt, 0deg)); transform-origin: left center; }
+.note.busy { transform: none; }
+.note.fresh { animation: write 0.5s ease-out; }
+@keyframes write { from { opacity: 0; clip-path: inset(0 100% 0 0); } to { opacity: 1; clip-path: inset(0 0 0 0); } }
 @media (prefers-reduced-motion: reduce) { .note.fresh { animation: none; } }
-.note-text { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 1.05rem; }
-.note-meta { margin: auto 0 0; display: flex; justify-content: space-between; gap: 10px; font-size: 0.85rem; opacity: 0.75; }
-.note-name { font-weight: 700; overflow-wrap: anywhere; }
-.note-when { flex: none; }
-.note-actions { display: flex; gap: 14px; font-size: 0.88rem; margin-top: -4px; }
-.note-actions .link { color: inherit; opacity: 0.75; min-height: 28px; }
-.note-actions .link:hover { opacity: 1; }
-.note-edit textarea { background: var(--surface); }
-.note-buttons { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
-.note-confirm { border-top: 1px solid rgb(128 128 128 / 0.3); padding-top: 10px; }
-.note-question { margin: 0; font-weight: 700; font-size: 0.95rem; }
-.btn-danger { background: var(--error); border-color: var(--error); color: var(--surface); }
+.note-text { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
 
-.empty { text-align: center; color: var(--muted); padding: 30px 12px; border: 1.5px dashed var(--line); border-radius: var(--radius); }
+.note-actions { display: flex; gap: 14px; margin-top: 4px; }
+.note-actions .link { font: 600 0.78rem var(--sans); color: var(--muted); opacity: 0.75; min-height: 28px; }
+.note-actions .link:hover, .note-actions .link:focus-visible { opacity: 1; color: var(--ink); }
+.note-edit textarea {
+  display: block; width: 100%; resize: vertical; background: #fff;
+  border: 1.5px dashed var(--pen); border-radius: 8px; padding: 6px 8px;
+}
+.note-buttons { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.note-question { margin: 10px 0 0; font: 700 0.9rem var(--sans); color: var(--ink); }
+
+.empty { text-align: center; color: #8d9198; padding: 30px 12px; max-width: 26em; margin: 0 auto; font: 400 1.5rem/1.3 "Caveat", cursive; }
+
+/* the ledge under the board */
+.tray {
+  position: relative; z-index: 1;
+  display: flex; align-items: flex-end; gap: 14px; height: 22px; margin: 0 clamp(16px, 8vw, 110px); padding: 0 24px;
+  background: linear-gradient(#cfd2d6, #9ea2a8); border-radius: 0 0 8px 8px; box-shadow: 0 10px 18px rgb(0 0 0 / 0.2);
+}
+.pen { width: 74px; height: 12px; margin-bottom: 20px; border-radius: 4px; background: linear-gradient(90deg, var(--cap) 0 26%, #f1f1ee 26% 90%, var(--cap) 90%); box-shadow: 0 2px 2px rgb(0 0 0 / 0.25); }
+.eraser { width: 86px; height: 22px; margin: 0 0 20px auto; border-radius: 4px; background: linear-gradient(#3f4650 0 55%, #e8e3d6 55%); box-shadow: 0 2px 2px rgb(0 0 0 / 0.25); }
+@media (max-width: 520px) { .pen:nth-child(n+3) { display: none; } .pen { width: 56px; } .eraser { width: 60px; } }

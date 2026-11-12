@@ -2,6 +2,16 @@
 const $ = (id) => document.getElementById(id);
 const views = { home: $('home'), board: $('board'), missing: $('missing') };
 
+// The markers and handwriting on offer. The server (server.js) accepts the same keys.
+const COLORS = [
+  ['black', 'Black'], ['blue', 'Blue'], ['red', 'Red'], ['green', 'Green'],
+  ['purple', 'Purple'], ['orange', 'Orange'], ['pink', 'Pink'], ['teal', 'Teal'],
+];
+const FONTS = [
+  ['caveat', 'Quick'], ['kalam', 'Neat'], ['indie', 'Loopy'],
+  ['shadows', 'Tall'], ['gloria', 'Bouncy'], ['marker', 'Bold'],
+];
+
 // ---------- what the browser remembers ----------
 // localStorage can be unavailable (private windows, blocked storage) — the site still works without it.
 const store = {
@@ -19,8 +29,6 @@ const store = {
     } catch {}
   },
 };
-const getName = () => store.get('gb.name', '');
-const setName = (name) => store.set('gb.name', name);
 const getBoards = () => {
   const list = store.get('gb.boards', []);
   return Array.isArray(list) ? list.filter((b) => b && typeof b.code === 'string') : [];
@@ -29,13 +37,24 @@ function rememberBoard(code, title) {
   const rest = getBoards().filter((b) => b.code !== code);
   store.set('gb.boards', [{ code, title, visited: Date.now() }, ...rest].slice(0, 12));
 }
-// A private key for this browser. The server uses it to tell which notes are yours to edit or delete.
+const forgetBoard = (code) => store.set('gb.boards', getBoards().filter((b) => b.code !== code));
+
+// A private key for this browser. The server uses it to tell which notes are yours to edit or erase.
 let authorKey = store.get('gb.key', '');
 if (typeof authorKey !== 'string' || authorKey.length < 16) {
   authorKey = Array.from(crypto.getRandomValues(new Uint8Array(24)), (b) => b.toString(16).padStart(2, '0')).join('');
   store.set('gb.key', authorKey);
 }
-const forgetBoard = (code) => store.set('gb.boards', getBoards().filter((b) => b.code !== code));
+
+// Your marker and handwriting. First-time visitors get a random pair so a new board isn't all one colour.
+function remembered(key, options) {
+  const saved = store.get(key, '');
+  if (options.some(([id]) => id === saved)) return saved;
+  const choice = options[Math.floor(Math.random() * options.length)][0];
+  store.set(key, choice);
+  return choice;
+}
+const pen = { color: remembered('gb.color', COLORS), font: remembered('gb.font', FONTS) };
 
 // ---------- helpers ----------
 const normalizeCode = (raw) => String(raw || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
@@ -77,18 +96,18 @@ function dayLabel(ts) {
     ...(d.getFullYear() !== now.getFullYear() && { year: 'numeric' }),
   });
 }
-// Each person gets a steady note colour, derived from their name.
-function hueFor(name) {
-  let h = 0;
-  for (const ch of name.trim().toLowerCase()) h = (h * 31 + ch.codePointAt(0)) % 360;
-  return h;
+
+// Let a textarea grow with what's written in it.
+function autosize(box) {
+  box.style.height = 'auto';
+  box.style.height = `${box.scrollHeight + 2}px`;
 }
 
 // ---------- routing ----------
 let current = null; // board being shown: { code, title, entries }
 let pollTimer = null;
 let seenIds = new Set();
-let busyNote = null; // { id, mode: 'edit' | 'delete' } while someone is editing or confirming a delete
+let busyNote = null; // { id, mode: 'edit' | 'delete' } while someone is editing or confirming an erase
 
 function show(name) {
   for (const [key, node] of Object.entries(views)) node.hidden = key !== name;
@@ -104,7 +123,6 @@ async function route() {
   clearInterval(pollTimer);
   current = null;
   const match = location.pathname.match(/^\/b\/([^/]+)\/?$/);
-  // Old-style share links (?code=ABC123) work too.
   const code = normalizeCode(match ? match[1] : new URLSearchParams(location.search).get('code'));
   if (!code) return renderHome();
   try {
@@ -125,15 +143,12 @@ async function route() {
 // ---------- home ----------
 function renderHome() {
   document.title = 'Gratitude Board';
-  const name = getName();
   const boards = getBoards();
-  $('greeting').textContent = name
-    ? `Welcome back, ${name}. What's one good thing today?`
-    : 'A shared board where you and your people add one good thing, every day.';
-  $('create-name').value = name;
+  $('greeting').textContent = boards.length
+    ? "Welcome back. What's one good thing today?"
+    : 'A shared whiteboard where you and your people write one good thing, every day. No names — just gratitude.';
 
-  const list = $('recent-list');
-  list.replaceChildren(
+  $('recent-list').replaceChildren(
     ...boards.map((b) => {
       const a = el('a');
       a.href = `/b/${b.code}`;
@@ -174,16 +189,10 @@ $('join-form').addEventListener('submit', async (e) => {
 
 $('create-form').addEventListener('submit', async (e) => {
   e.preventDefault();
-  const name = $('create-name').value.trim();
-  if (!name) {
-    $('create-error').textContent = 'Add your name so people know who started it.';
-    return $('create-name').focus();
-  }
   const btn = e.submitter || e.target.querySelector('button');
   btn.disabled = true;
   try {
     const board = await api('/api/boards', { title: $('create-title').value });
-    setName(name);
     history.pushState(null, '', `/b/${board.code}`);
     openBoard(board);
     $('create-title').value = '';
@@ -193,6 +202,52 @@ $('create-form').addEventListener('submit', async (e) => {
     btn.disabled = false;
   }
 });
+
+// ---------- marker and handwriting pickers ----------
+function buildPicker(container, name, options, render) {
+  container.replaceChildren(
+    ...options.flatMap(([id, label]) => {
+      const input = el('input');
+      input.type = 'radio';
+      input.name = name;
+      input.value = id;
+      input.id = `${name}-${id}`;
+      input.checked = pen[name] === id;
+      input.addEventListener('change', () => {
+        pen[name] = id;
+        store.set(`gb.${name}`, id);
+        applyPen();
+      });
+      const tag = render(id, label);
+      tag.htmlFor = input.id;
+      return [input, tag];
+    })
+  );
+}
+
+// Show the composer (and the handwriting samples) in the chosen marker.
+function applyPen() {
+  $('entry-form').className = `composer c-${pen.color} f-${pen.font}`;
+  for (const sample of document.querySelectorAll('.hand')) {
+    sample.className = `hand ink c-${pen.color} f-${sample.dataset.font}`;
+  }
+  autosize($('entry-text'));
+}
+
+buildPicker($('color-picker'), 'color', COLORS, (id, label) => {
+  const swatch = el('label', `swatch c-${id}`);
+  swatch.title = label;
+  swatch.setAttribute('aria-label', `${label} marker`);
+  return swatch;
+});
+buildPicker($('font-picker'), 'font', FONTS, (id, label) => {
+  const sample = el('label', 'hand', label);
+  sample.dataset.font = id;
+  return sample;
+});
+applyPen();
+$('entry-text').addEventListener('input', (e) => autosize(e.target));
+document.fonts?.ready.then(() => autosize($('entry-text')));
 
 // ---------- board ----------
 function openBoard(board) {
@@ -206,19 +261,10 @@ function openBoard(board) {
   $('copy-code').textContent = board.code;
   $('share-status').textContent = '';
   $('entry-error').textContent = '';
-  renderIdentity();
   renderEntries(board.entries);
   show('board');
+  autosize($('entry-text'));
   pollTimer = setInterval(refresh, 20_000);
-}
-
-function renderIdentity(editing = false) {
-  const name = getName();
-  const known = Boolean(name) && !editing;
-  $('name-row').hidden = known;
-  $('posting-as').hidden = !known;
-  $('posting-name').textContent = name;
-  $('entry-name').value = name;
 }
 
 function renderEntries(entries, { animate = false } = {}) {
@@ -226,11 +272,11 @@ function renderEntries(entries, { animate = false } = {}) {
   const today = dayKey(Date.now());
   const mineToday = entries.filter((entry) => entry.mine && dayKey(entry.createdAt) === today).length;
   $('today-status').textContent = mineToday
-    ? `You've added ${mineToday === 1 ? 'one' : mineToday} today — add another any time.`
+    ? `You've written ${mineToday === 1 ? 'one' : mineToday} today. Add another any time.`
     : '';
 
   if (entries.length === 0) {
-    container.replaceChildren(el('p', 'empty', 'Nothing here yet. Add the first good thing, then invite people with the code above.'));
+    container.replaceChildren(el('p', 'empty', 'A clean board. Write the first good thing, then invite people with the code.'));
     return;
   }
 
@@ -246,18 +292,15 @@ function renderEntries(entries, { animate = false } = {}) {
       const section = el('section', 'day');
       const notes = el('div', 'notes');
       for (const entry of day.items) {
-        const note = el('article', 'note');
+        const busy = busyNote?.id === entry.id ? busyNote.mode : null;
+        const note = el('article', `note c-${entry.color} f-${entry.font}`);
+        if (busy) note.classList.add('busy');
         if (animate && !seenIds.has(entry.id)) note.classList.add('fresh');
-        note.style.setProperty('--hue', hueFor(entry.name));
-        const meta = el('p', 'note-meta');
-        const time = el('time', 'note-time', new Date(entry.createdAt).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }));
-        time.dateTime = new Date(entry.createdAt).toISOString();
-        meta.append(el('span', 'note-name', entry.name), el('span', 'note-when'));
-        meta.lastChild.append(time, entry.editedAt ? ' · edited' : '');
-        if (busyNote?.id === entry.id && busyNote.mode === 'edit') note.append(editForm(entry), meta);
-        else note.append(el('p', 'note-text', entry.text), meta);
-        if (entry.mine && busyNote?.id !== entry.id) note.append(noteActions(entry));
-        if (busyNote?.id === entry.id && busyNote.mode === 'delete') note.append(deleteConfirm(entry));
+        // A steady, slightly crooked angle for each note, like real handwriting on a board.
+        note.style.setProperty('--tilt', `${(((entry.id * 37) % 7) - 3) * 0.6}deg`);
+        note.append(busy === 'edit' ? editForm(entry) : el('p', 'note-text ink', entry.text));
+        if (entry.mine && !busy) note.append(noteActions(entry));
+        if (busy === 'delete') note.append(deleteConfirm(entry));
         notes.append(note);
       }
       section.append(el('h2', 'day-label', day.label), notes);
@@ -267,7 +310,7 @@ function renderEntries(entries, { animate = false } = {}) {
   for (const entry of entries) seenIds.add(entry.id);
 }
 
-// ---------- editing and deleting your own notes ----------
+// ---------- editing and erasing your own notes ----------
 function setBusy(next) {
   busyNote = next;
   renderEntries(current.entries);
@@ -276,19 +319,21 @@ function setBusy(next) {
 function noteActions(entry) {
   const row = el('div', 'note-actions');
   const edit = el('button', 'link', 'Edit');
-  const del = el('button', 'link', 'Delete');
-  edit.type = del.type = 'button';
+  const erase = el('button', 'link', 'Erase');
+  edit.type = erase.type = 'button';
   edit.addEventListener('click', () => {
     setBusy({ id: entry.id, mode: 'edit' });
     const box = document.querySelector('.note-edit textarea');
-    box?.focus();
-    box?.setSelectionRange(box.value.length, box.value.length);
+    if (!box) return;
+    autosize(box);
+    box.focus();
+    box.setSelectionRange(box.value.length, box.value.length);
   });
-  del.addEventListener('click', () => {
+  erase.addEventListener('click', () => {
     setBusy({ id: entry.id, mode: 'delete' });
     document.querySelector('.note-confirm button')?.focus();
   });
-  row.append(edit, del);
+  row.append(edit, erase);
   return row;
 }
 
@@ -302,7 +347,7 @@ async function changeNote(entry, method, body, errorNode, buttons) {
     current = board;
     setBusy(null);
   } catch (err) {
-    if (err.status === 404) return refreshNow(); // someone already removed it
+    if (err.status === 404) return refreshNow(); // it was already erased
     errorNode.textContent = err.message;
     buttons.forEach((b) => (b.disabled = false));
   }
@@ -310,11 +355,12 @@ async function changeNote(entry, method, body, errorNode, buttons) {
 
 function editForm(entry) {
   const form = el('form', 'note-edit');
-  const box = el('textarea');
+  const box = el('textarea', 'ink');
   box.value = entry.text;
   box.maxLength = 500;
-  box.rows = Math.min(8, Math.max(3, entry.text.split('\n').length + 1));
-  box.setAttribute('aria-label', 'Edit your note');
+  box.rows = 2;
+  box.setAttribute('aria-label', 'Edit what you wrote');
+  box.addEventListener('input', () => autosize(box));
   const error = el('p', 'error');
   error.setAttribute('role', 'alert');
   const save = el('button', 'btn btn-small btn-primary', 'Save');
@@ -328,7 +374,7 @@ function editForm(entry) {
   form.addEventListener('submit', (e) => {
     e.preventDefault();
     const text = box.value.trim();
-    if (!text) return (error.textContent = 'A note needs some words. To remove it, cancel and choose Delete.');
+    if (!text) return (error.textContent = 'It needs some words. To remove it, cancel and choose Erase.');
     if (text === entry.text) return setBusy(null);
     changeNote(entry, 'PATCH', { text }, error, [save, cancel]);
   });
@@ -342,14 +388,14 @@ function deleteConfirm(entry) {
   const wrap = el('div', 'note-confirm');
   const error = el('p', 'error');
   error.setAttribute('role', 'alert');
-  const yes = el('button', 'btn btn-small btn-danger', 'Delete note');
+  const yes = el('button', 'btn btn-small btn-danger', 'Erase it');
   const no = el('button', 'btn btn-small', 'Keep it');
   yes.type = no.type = 'button';
   yes.addEventListener('click', () => changeNote(entry, 'DELETE', undefined, error, [yes, no]));
   no.addEventListener('click', () => setBusy(null));
   const row = el('div', 'note-buttons');
   row.append(yes, no);
-  wrap.append(el('p', 'note-question', 'Delete this note for everyone?'), error, row);
+  wrap.append(el('p', 'note-question', 'Erase this from the board for everyone?'), error, row);
   return wrap;
 }
 
@@ -373,24 +419,12 @@ async function refresh() {
 }
 document.addEventListener('visibilitychange', () => !document.hidden && refresh());
 
-$('change-name').addEventListener('click', () => {
-  renderIdentity(true);
-  $('entry-name').focus();
-  $('entry-name').select();
-});
-
 $('entry-form').addEventListener('submit', async (e) => {
   e.preventDefault();
   if (!current) return;
   const error = $('entry-error');
-  const name = $('entry-name').value.trim();
   const text = $('entry-text').value.trim();
   error.textContent = '';
-  if (!name) {
-    renderIdentity(true);
-    error.textContent = 'Add your name so people know who this is from.';
-    return $('entry-name').focus();
-  }
   if (!text) {
     error.textContent = "Write something you're grateful for first.";
     return $('entry-text').focus();
@@ -398,12 +432,11 @@ $('entry-form').addEventListener('submit', async (e) => {
   const btn = e.submitter || e.target.querySelector('button[type=submit]');
   btn.disabled = true;
   try {
-    const board = await api(`/api/boards/${current.code}/entries`, { name, text });
-    setName(name);
+    const board = await api(`/api/boards/${current.code}/entries`, { text, color: pen.color, font: pen.font });
     current = board;
     busyNote = null;
     $('entry-text').value = '';
-    renderIdentity();
+    autosize($('entry-text'));
     renderEntries(board.entries, { animate: true });
   } catch (err) {
     error.textContent = err.message;
@@ -441,7 +474,7 @@ $('copy-code').addEventListener('click', async () => {
 $('share-btn').addEventListener('click', async () => {
   if (!current) return;
   const url = `${location.origin}/b/${current.code}`;
-  const text = `Add what you're grateful for to "${current.title}". Open the link, or enter code ${current.code}.`;
+  const text = `Write what you're grateful for on "${current.title}". Open the link, or enter code ${current.code}. No names needed.`;
   if (navigator.share) {
     try {
       await navigator.share({ title: current.title, text, url });
@@ -450,7 +483,7 @@ $('share-btn').addEventListener('click', async () => {
       if (err.name === 'AbortError') return; // they closed the share sheet
     }
   }
-  flash((await copy(url)) ? 'Invite link copied — paste it to anyone' : `Share this link: ${url}`);
+  flash((await copy(url)) ? 'Invite link copied. Paste it to anyone.' : `Share this link: ${url}`);
 });
 
 // ---------- in-app navigation ----------

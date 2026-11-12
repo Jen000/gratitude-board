@@ -35,22 +35,28 @@ test('create a board, add to it, read it back by code', async () => {
   assert.equal(created.title, 'Team Friday');
   assert.deepEqual(created.entries, []);
 
-  const res = await post(`/api/boards/${created.code}/entries`, { name: ' Jen ', text: 'Coffee\n\n\n\nand   sunshine' });
+  const res = await post(`/api/boards/${created.code}/entries`, { name: 'Jen', text: 'Coffee\n\n\n\nand   sunshine', color: 'teal', font: 'gloria' });
   assert.equal(res.status, 201);
 
   // Codes are forgiving: lowercase and stray punctuation still find the board.
   const board = await (await fetch(`${base}/api/boards/${created.code.toLowerCase().replace(/^(...)/, '$1-')}`)).json();
   assert.equal(board.entries.length, 1);
-  assert.equal(board.entries[0].name, 'Jen');
+  // Notes are anonymous (a name is ignored even if one is sent) and keep their marker and handwriting.
+  assert.equal('name' in board.entries[0], false);
+  assert.equal(board.entries[0].color, 'teal');
+  assert.equal(board.entries[0].font, 'gloria');
   assert.equal(board.entries[0].text, 'Coffee\n\nand sunshine');
 });
 
 test('rejects empty entries and unknown codes', async () => {
   const { code } = await (await post('/api/boards', {})).json();
-  assert.equal((await post(`/api/boards/${code}/entries`, { name: '', text: 'hi' })).status, 400);
-  assert.equal((await post(`/api/boards/${code}/entries`, { name: 'Jen', text: '   ' })).status, 400);
+  assert.equal((await post(`/api/boards/${code}/entries`, { text: '   ' })).status, 400);
+  // Unknown markers fall back to the defaults rather than being stored.
+  const odd = await (await post(`/api/boards/${code}/entries`, { text: 'hi', color: 'url(evil)', font: 'x' })).json();
+  assert.equal(odd.entries[0].color, 'black');
+  assert.equal(odd.entries[0].font, 'caveat');
   assert.equal((await fetch(`${base}/api/boards/ZZZZZZ`)).status, 404);
-  assert.equal((await post('/api/boards/ZZZZZZ/entries', { name: 'Jen', text: 'hi' })).status, 404);
+  assert.equal((await post('/api/boards/ZZZZZZ/entries', { text: 'hi' })).status, 404);
 });
 
 test('serves the app for board links and blocks path traversal', async () => {
@@ -65,7 +71,7 @@ test('only the author can edit or delete a note', async () => {
   const jen = 'jen-browser-key-0123456789';
   const sam = 'sam-browser-key-0123456789';
   const { code } = await (await post('/api/boards', {})).json();
-  const mine = await (await post(`/api/boards/${code}/entries`, { name: 'Jen', text: 'Tea' }, jen)).json();
+  const mine = await (await post(`/api/boards/${code}/entries`, { text: 'Tea' }, jen)).json();
   const { id } = mine.entries[0];
   assert.equal(mine.entries[0].mine, true);
   assert.equal('authorKey' in mine.entries[0], false);
@@ -83,7 +89,6 @@ test('only the author can edit or delete a note', async () => {
   assert.equal((await send('DELETE', `/api/boards/${other.code}/entries/${id}`, undefined, jen)).status, 404);
   const edited = await (await send('PATCH', `/api/boards/${code}/entries/${id}`, { text: 'Green tea' }, jen)).json();
   assert.equal(edited.entries[0].text, 'Green tea');
-  assert.ok(edited.entries[0].editedAt);
 
   const gone = await (await send('DELETE', `/api/boards/${code}/entries/${id}`, undefined, jen)).json();
   assert.deepEqual(gone.entries, []);
