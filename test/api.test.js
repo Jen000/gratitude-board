@@ -4,6 +4,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { once } from 'node:events';
+import { DatabaseSync } from 'node:sqlite';
 
 let server, base, dataDir;
 
@@ -71,6 +72,15 @@ test('serves the app for board links and blocks path traversal', async () => {
   assert.match(await page.text(), /Gratitude Board/);
   assert.equal((await fetch(`${base}/..%2Fserver.js`)).status, 404);
   assert.equal((await fetch(`${base}/%2e%2e/package.json`)).status, 404);
+  assert.equal((await fetch(`${base}/%E0%A4%A`)).status, 400);
+
+  // Browsers are told to load code only from this site and never to show it inside another site.
+  for (const path of ['/', '/api/boards/ZZZZZZ', '/app.js']) {
+    const { headers } = await fetch(base + path);
+    assert.match(headers.get('content-security-policy'), /default-src 'self'.*frame-ancestors 'none'/);
+    assert.equal(headers.get('x-content-type-options'), 'nosniff');
+    assert.equal(headers.get('referrer-policy'), 'no-referrer');
+  }
 });
 
 test('only the author can edit or delete a note', async () => {
@@ -111,9 +121,9 @@ test('drawings are saved as strokes that only their author can erase', async () 
   const jen = 'jen-browser-key-0123456789';
   const sam = 'sam-browser-key-0123456789';
   const { code } = await (await post('/api/boards', {})).json();
-  const drawn = await (await post(`/api/boards/${code}/entries`, { kind: 'draw', color: 'red', points: [10.4, 20, 30, 40, 5000, -3] }, jen)).json();
+  const drawn = await (await post(`/api/boards/${code}/entries`, { kind: 'draw', color: 'red', size: 'l', points: [10.4, 20, 30, 40, 5000, -3] }, jen)).json();
   const stroke = drawn.entries[0];
-  assert.deepEqual(stroke, { id: stroke.id, color: 'red', mine: true, kind: 'draw', points: [10, 20, 30, 40, 1400, 0] });
+  assert.deepEqual(stroke, { id: stroke.id, color: 'red', mine: true, kind: 'draw', size: 'l', points: [10, 20, 30, 40, 1400, 0] });
 
   for (const points of [[1, 2], [1, 2, 3], [1, 2, 'x', 4], 'nope', new Array(3002).fill(1)]) {
     assert.equal((await post(`/api/boards/${code}/entries`, { kind: 'draw', points }, jen)).status, 400);
@@ -122,4 +132,24 @@ test('drawings are saved as strokes that only their author can erase', async () 
   assert.equal((await send('DELETE', `/api/boards/${code}/entries/${stroke.id}`, undefined, sam)).status, 403);
   const gone = await (await send('DELETE', `/api/boards/${code}/entries/${stroke.id}`, undefined, jen)).json();
   assert.deepEqual(gone.entries, []);
+});
+
+test('a board is erased after 90 days with nothing new, and any activity restarts the clock', async () => {
+  const db = new DatabaseSync(join(dataDir, 'gratitude.db'));
+  const age = (code, days) => db.prepare('UPDATE boards SET last_active = ? WHERE code = ?').run(Date.now() - days * 86_400_000, code);
+  const key = 'jen-browser-key-0123456789';
+
+  const kept = await (await post('/api/boards', {})).json();
+  assert.equal(kept.expiresAfterDays, 90);
+  age(kept.code, 89);
+  const written = await (await post(`/api/boards/${kept.code}/entries`, { text: 'Still here' }, key)).json();
+  assert.ok(written.expiresAt > Date.now() + 89 * 86_400_000);
+
+  const lost = await (await post('/api/boards', {})).json();
+  await post(`/api/boards/${lost.code}/entries`, { text: 'Old news' }, key);
+  age(lost.code, 91);
+  assert.equal((await fetch(`${base}/api/boards/${lost.code}`)).status, 404);
+  assert.equal((await post(`/api/boards/${lost.code}/entries`, { text: 'Too late' }, key)).status, 404);
+  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM entries WHERE board_code = ?').get(lost.code).n, 0);
+  db.close();
 });

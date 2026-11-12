@@ -9,6 +9,7 @@ A shared board where you and your people add one good thing, every day.
 - **No names**: nothing on the board says who wrote or drew what. The server never sends that out.
 - **Move, edit or erase your own work**: drag your writing to move it, tap it to edit, or rub it out with the eraser. Nobody else's can be touched.
 - **Sounds**: a marker noise when something is added, an eraser noise when something is erased, both for an edit. There is a Sound on/off button.
+- **Boards expire**: a board is erased for good after 90 days with nothing added, changed or erased on it.
 - **The browser remembers you**: your marker, handwriting, writing size, sound setting and the boards you've opened are kept in that browser.
 
 ## Run it
@@ -31,6 +32,7 @@ npm test
 | ---------- | -------- | ---------------------------------------------- |
 | `PORT`     | `3000`   | Port the site listens on                       |
 | `DATA_DIR` | Railway volume if attached, else `./data` | Folder that holds the SQLite file with boards |
+| `BOARD_TTL_DAYS` | `90` | Days with nothing new before a board is erased for good |
 
 ## Putting it online (Railway)
 
@@ -51,6 +53,15 @@ Any other host that runs Node works too: run `npm start` and point `DATA_DIR` at
 
 Anyone with a board's code can read it and add to it; there are no accounts or passwords.
 Each browser keeps a private key, and a note can only be edited or erased with the key that wrote it.
+
+## Security
+
+- No accounts, names, emails or cookies. The only thing kept about a writer is a scrambled copy of their browser's private key, used to decide who may move, edit or erase a note.
+- A board's code is its only lock: anyone who has it can read the board and add to it.
+- What people write is always shown as plain text, and the server only accepts the listed colours, fonts and sizes.
+- Every response carries a Content-Security-Policy and related headers, so the page only runs code from this site and can't be embedded elsewhere.
+- Requests are rate-limited per address, request bodies are capped, and a board holds at most 4,000 items.
+- There are no third-party scripts, fonts or packages.
 
 ## Fonts
 

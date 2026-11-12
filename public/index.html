@@ -80,10 +80,10 @@
       </div>
     </div>
     <div class="tray" aria-hidden="true">
-      <span class="pen" style="--cap:#23262b"></span>
-      <span class="pen" style="--cap:#1d4fd8"></span>
-      <span class="pen" style="--cap:#d42a2a"></span>
-      <span class="pen" style="--cap:#15803d"></span>
+      <span class="pen c-black"></span>
+      <span class="pen c-blue"></span>
+      <span class="pen c-red"></span>
+      <span class="pen c-green"></span>
       <span class="eraser"></span>
     </div>
     <!-- Tools and instructions sit under the board and stay at the bottom of the screen. -->
@@ -102,6 +102,10 @@
           <legend class="sr-only">Handwriting</legend>
           <div id="font-picker" class="hands"></div>
         </fieldset>
+        <fieldset class="picker" id="width-field">
+          <legend class="sr-only">Line thickness</legend>
+          <div id="width-picker" class="sizes"></div>
+        </fieldset>
         <fieldset class="picker" id="size-field">
           <legend class="sr-only">Writing size</legend>
           <div id="size-picker" class="sizes"></div>
@@ -112,6 +116,7 @@
         <button type="button" id="write-here" class="link">Start writing</button>
         <span id="pan-hint" hidden>Swipe sideways to see the rest of the board.</span>
         No names here: nobody can see who wrote what.
+        <span id="expiry"></span>
       </p>
     </div>
     <p id="toast" class="toast" role="alert"></p>

@@ -20,6 +20,10 @@ const MAX_TITLE = 60;
 const MAX_TEXT = 500;
 const MAX_BODY_BYTES = 40_000;
 const MAX_STROKE_POINTS = 1500;
+// A board is erased for good once this many days pass with nothing added, changed or erased on it.
+const BOARD_TTL_DAYS = Number(process.env.BOARD_TTL_DAYS) > 0 ? Number(process.env.BOARD_TTL_DAYS) : 90;
+const BOARD_TTL_MS = BOARD_TTL_DAYS * 86_400_000;
+const MAX_ENTRIES_PER_BOARD = 4000; // keeps one board from growing without limit
 // The markers and handwriting people can choose from. The site (public/app.js) offers the same lists.
 const COLORS = ['black', 'blue', 'red', 'green', 'purple', 'orange', 'pink', 'teal'];
 const FONTS = ['caveat', 'kalam', 'indie', 'shadows', 'gloria', 'marker', 'messy'];
@@ -50,6 +54,12 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS entries_by_board ON entries(board_code, created_at);
 `);
 // Columns added after the first version: who may edit a note, and when it was last edited.
+if (!db.prepare('PRAGMA table_info(boards)').all().some((c) => c.name === 'last_active')) {
+  db.exec(`
+    ALTER TABLE boards ADD COLUMN last_active INTEGER;
+    UPDATE boards SET last_active = MAX(created_at, COALESCE((SELECT MAX(created_at) FROM entries WHERE board_code = code), 0));
+  `);
+}
 const entryColumns = new Set(db.prepare('PRAGMA table_info(entries)').all().map((c) => c.name));
 if (!entryColumns.has('author_key')) db.exec('ALTER TABLE entries ADD COLUMN author_key TEXT');
 if (!entryColumns.has('edited_at')) db.exec('ALTER TABLE entries ADD COLUMN edited_at INTEGER');
@@ -70,16 +80,21 @@ if (!entryColumns.has('x')) {
 }
 
 const q = {
-  insertBoard: db.prepare('INSERT INTO boards (code, title, created_at) VALUES (?, ?, ?)'),
-  getBoard: db.prepare('SELECT code, title, created_at AS createdAt FROM boards WHERE code = ?'),
+  insertBoard: db.prepare('INSERT INTO boards (code, title, created_at, last_active) VALUES (?, ?, ?, ?)'),
+  getBoard: db.prepare('SELECT code, title, created_at AS createdAt, last_active AS lastActive FROM boards WHERE code = ?'),
+  touchBoard: db.prepare('UPDATE boards SET last_active = ? WHERE code = ?'),
+  expiredBoards: db.prepare('SELECT code FROM boards WHERE last_active < ?'),
+  deleteBoardEntries: db.prepare('DELETE FROM entries WHERE board_code = ?'),
+  deleteBoard: db.prepare('DELETE FROM boards WHERE code = ?'),
   getEntries: db.prepare(
     'SELECT id, text, color, font, size, x, y, path, author_key AS authorKey FROM entries WHERE board_code = ? ORDER BY id'
   ),
   insertEntry: db.prepare("INSERT INTO entries (board_code, name, text, color, font, size, x, y, created_at, author_key) VALUES (?, '', ?, ?, ?, ?, ?, ?, ?, ?)"),
   insertDrawing: db.prepare(
-    "INSERT INTO entries (board_code, name, text, color, x, y, path, created_at, author_key) VALUES (?, '', '', ?, ?, ?, ?, ?, ?)"
+    "INSERT INTO entries (board_code, name, text, color, size, x, y, path, created_at, author_key) VALUES (?, '', '', ?, ?, ?, ?, ?, ?, ?)"
   ),
   getEntry: db.prepare('SELECT author_key AS authorKey, path FROM entries WHERE id = ? AND board_code = ?'),
+  countEntries: db.prepare('SELECT COUNT(*) AS n FROM entries WHERE board_code = ?'),
   updateEntry: db.prepare('UPDATE entries SET text = ?, edited_at = ? WHERE id = ?'),
   moveEntry: db.prepare('UPDATE entries SET x = ?, y = ? WHERE id = ?'),
   deleteEntry: db.prepare('DELETE FROM entries WHERE id = ?'),
@@ -112,8 +127,25 @@ setInterval(() => {
   for (const [k, b] of buckets) if (b.reset < now) buckets.delete(k);
 }, 60_000).unref();
 
+// Who is asking, for rate limiting. Behind a host's proxy (Railway) the real address arrives in a header.
+// The last X-Forwarded-For entry is the one the proxy added; earlier ones can be made up by the sender.
 const clientIp = (req) =>
-  String(req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.socket.remoteAddress || '?';
+  String(req.headers['x-real-ip'] || '').trim() ||
+  String(req.headers['x-forwarded-for'] || '').split(',').pop().trim() ||
+  req.socket.remoteAddress ||
+  '?';
+
+// Sent with every response. The page may only load scripts, styles, fonts and data from this site itself,
+// may not be embedded in other sites, and tells browsers not to pass board links on to other sites.
+const SECURITY_HEADERS = {
+  'Content-Security-Policy':
+    "default-src 'self'; img-src 'self' data:; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'",
+  'X-Content-Type-Options': 'nosniff',
+  'X-Frame-Options': 'DENY',
+  'Referrer-Policy': 'no-referrer',
+  'Cross-Origin-Opener-Policy': 'same-origin',
+  'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
+};
 
 function send(res, status, body) {
   const json = JSON.stringify(body);
@@ -144,16 +176,31 @@ function authorKey(req) {
   return raw.length >= 16 && raw.length <= 200 ? createHash('sha256').update(raw).digest('hex') : null;
 }
 
+// ---------- expiry ----------
+const isExpired = (board) => board.lastActive < Date.now() - BOARD_TTL_MS;
+function eraseBoard(code) {
+  q.deleteBoardEntries.run(code);
+  q.deleteBoard.run(code);
+}
+function eraseExpiredBoards() {
+  for (const { code } of q.expiredBoards.all(Date.now() - BOARD_TTL_MS)) eraseBoard(code);
+}
+eraseExpiredBoards();
+setInterval(eraseExpiredBoards, 3_600_000).unref();
+
 function boardPayload(code, key) {
-  const board = q.getBoard.get(code);
-  if (!board) return null;
+  const found = q.getBoard.get(code);
+  if (!found) return null;
+  const { lastActive, ...board } = found;
+  board.expiresAfterDays = BOARD_TTL_DAYS;
+  board.expiresAt = lastActive + BOARD_TTL_MS;
   // Notes are anonymous: nothing about who wrote one leaves the server, except "this one is yours".
   // An entry is either a piece of writing or one drawn stroke (a list of x,y,x,y,… points).
   const entries = q.getEntries.all(code).map(({ authorKey: owner, path, text, font, size, x, y, ...entry }) => ({
     ...entry,
     color: pick(entry.color, COLORS),
     mine: Boolean(key && owner && owner === key),
-    ...(path ? { kind: 'draw', points: JSON.parse(path) } : { kind: 'text', text, font: pick(font, FONTS), size: pick(size, SIZES), x, y }),
+    ...(path ? { kind: 'draw', size: pick(size, SIZES), points: JSON.parse(path) } : { kind: 'text', text, font: pick(font, FONTS), size: pick(size, SIZES), x, y }),
   }));
   return { ...board, entries };
 }
@@ -172,7 +219,7 @@ async function handleApi(req, res, path) {
     for (let attempt = 0; attempt < 10; attempt++) {
       const code = newCode();
       try {
-        q.insertBoard.run(code, title, Date.now());
+        q.insertBoard.run(code, title, Date.now(), Date.now());
         return send(res, 201, boardPayload(code, key));
       } catch (err) {
         if (!String(err.message).includes('UNIQUE')) throw err; // collision: try another code
@@ -182,6 +229,9 @@ async function handleApi(req, res, path) {
   }
 
   const code = normalizeCode(parts[2]);
+  // The hourly sweep removes old boards; this catches one that ran out since the last sweep.
+  const existing = q.getBoard.get(code);
+  if (existing && isExpired(existing)) eraseBoard(code);
 
   // GET /api/boards/:code
   if (parts.length === 3 && req.method === 'GET') {
@@ -196,12 +246,16 @@ async function handleApi(req, res, path) {
     if (limited(ip, 'post', 900, 600_000)) return send(res, 429, { error: 'Slow down a little and try again.' });
     if (!q.getBoard.get(code)) return send(res, 404, { error: "We couldn't find a board with that code." });
     const body = await readJson(req);
+    if (q.countEntries.get(code).n >= MAX_ENTRIES_PER_BOARD) {
+      return send(res, 400, { error: 'This board is full. Erase something of yours, or start a new board.' });
+    }
     if (body.kind === 'draw') {
       const raw = body.points;
       const ok = Array.isArray(raw) && raw.length >= 4 && raw.length % 2 === 0 && raw.length <= MAX_STROKE_POINTS * 2;
       const points = ok ? raw.map((v, i) => coord(v, i % 2 ? MAX_Y : BOARD_WIDTH)) : [];
       if (!ok || points.includes(null)) return send(res, 400, { error: "That drawing couldn't be saved." });
-      q.insertDrawing.run(code, pick(body.color, COLORS), points[0], points[1], JSON.stringify(points), Date.now(), key);
+      q.insertDrawing.run(code, pick(body.color, COLORS), pick(body.size, SIZES), points[0], points[1], JSON.stringify(points), Date.now(), key);
+      q.touchBoard.run(Date.now(), code);
       return send(res, 201, boardPayload(code, key));
     }
     const text = clean(body.text, MAX_TEXT, { multiline: true });
@@ -210,6 +264,7 @@ async function handleApi(req, res, path) {
     const x = coord(body.x, MAX_X) ?? randomInt(60, 900);
     const y = coord(body.y, MAX_Y) ?? randomInt(40, 600);
     q.insertEntry.run(code, text, pick(body.color, COLORS), pick(body.font, FONTS), pick(body.size, SIZES), x, y, Date.now(), key);
+    q.touchBoard.run(Date.now(), code);
     return send(res, 201, boardPayload(code, key));
   }
 
@@ -240,6 +295,7 @@ async function handleApi(req, res, path) {
       }
       if (x !== null && y !== null) q.moveEntry.run(x, y, id);
     }
+    q.touchBoard.run(Date.now(), code);
     return send(res, 200, boardPayload(code, key));
   }
 
@@ -272,7 +328,6 @@ async function handleStatic(req, res, path) {
     res.writeHead(200, {
       'Content-Type': MIME[extname(file)] || 'application/octet-stream',
       'Cache-Control': extname(file) === '.woff2' ? 'public, max-age=31536000, immutable' : 'no-cache',
-      'X-Content-Type-Options': 'nosniff',
     });
     res.end(req.method === 'HEAD' ? undefined : data);
   } catch {
@@ -281,8 +336,14 @@ async function handleStatic(req, res, path) {
 }
 
 export const server = createServer(async (req, res) => {
+  for (const [name, value] of Object.entries(SECURITY_HEADERS)) res.setHeader(name, value);
   try {
-    const path = decodeURIComponent(new URL(req.url, 'http://x').pathname);
+    let path;
+    try {
+      path = decodeURIComponent(new URL(req.url, 'http://x').pathname);
+    } catch {
+      throw Object.assign(new Error('Invalid request.'), { status: 400 });
+    }
     if (path.startsWith('/api/')) await handleApi(req, res, path);
     else await handleStatic(req, res, path);
   } catch (err) {

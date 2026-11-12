@@ -12,6 +12,8 @@ const FONTS = [
   ['gloria', 'Bouncy'], ['marker', 'Bold'], ['messy', 'Messy'],
 ];
 const SIZES = [['s', 'Small', 0.7], ['m', 'Medium', 1], ['l', 'Large', 1.45], ['xl', 'Extra large', 2]];
+const WIDTHS = [['s', 'Thin', 3], ['m', 'Medium', 6], ['l', 'Thick', 12], ['xl', 'Extra thick', 22]]; // line widths in board units
+const widthOf = (size) => WIDTHS.find(([id]) => id === size)?.[2] ?? 6;
 const zoomOf = (size) => SIZES.find(([id]) => id === size)?.[2] ?? 1;
 // The board is this many units wide for everyone and grows downward as it fills (same number in server.js).
 const BOARD_W = 1400;
@@ -63,6 +65,7 @@ function remembered(key, options) {
 }
 const pen = { color: remembered('gb.color', COLORS), font: remembered('gb.font', FONTS), size: 'm' };
 if (SIZES.some(([id]) => id === store.get('gb.size', ''))) pen.size = store.get('gb.size', 'm');
+pen.width = WIDTHS.some(([id]) => id === store.get('gb.width', '')) ? store.get('gb.width', 'm') : 'm';
 
 // ---------- sounds (made in the browser, no audio files) ----------
 let soundOn = store.get('gb.sound', true) !== false;
@@ -383,6 +386,13 @@ buildPicker($('size-picker'), 'size', SIZES, (id, label, zoom) => {
   option.style.setProperty('--px', `${Math.round(11 + zoom * 7)}px`);
   return option;
 });
+buildPicker($('width-picker'), 'width', WIDTHS, (id, label, width) => {
+  const option = el('label', 'size dot');
+  option.title = label;
+  option.setAttribute('aria-label', `${label} line`);
+  option.style.setProperty('--px', `${Math.round(3 + width * 0.8)}px`);
+  return option;
+});
 applyPen();
 
 const HINTS = {
@@ -401,6 +411,7 @@ function setMode(next) {
   $('color-field').hidden = mode === 'erase';
   $('font-field').hidden = mode !== 'write';
   $('size-field').hidden = mode !== 'write';
+  $('width-field').hidden = mode !== 'draw';
   if (mode !== 'write') {
     closeDraft();
     if (selectedId !== null || busyNote) {
@@ -424,6 +435,7 @@ function openBoard(board) {
   $('board-title').textContent = board.title;
   $('copy-code').textContent = board.code;
   $('share-status').textContent = '';
+  $('expiry').textContent = `The board is wiped for good after ${board.expiresAfterDays} days with nothing new on it.`;
   closeDraft();
   show('board');
   render();
@@ -467,9 +479,9 @@ const pathData = (points) => {
   for (let i = 2; i < points.length; i += 2) d += `L${points[i]} ${points[i + 1]}`;
   return d;
 };
-function strokeElement(color, points) {
+function strokeElement(color, size, points) {
   const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-  path.setAttribute('class', `stroke c-${color}`);
+  path.setAttribute('class', `stroke c-${color} s-${size}`);
   path.setAttribute('d', pathData(points));
   return path;
 }
@@ -479,7 +491,7 @@ const erasing = new Set(); // ids rubbed out but not yet confirmed by the server
 function render({ animate = false } = {}) {
   layout();
   const entries = current.entries.filter((entry) => !erasing.has(entry.id));
-  $('strokes').replaceChildren(...entries.filter((e) => e.kind === 'draw').map((e) => strokeElement(e.color, e.points)));
+  $('strokes').replaceChildren(...entries.filter((e) => e.kind === 'draw').map((e) => strokeElement(e.color, e.size, e.points)));
   $('notes').replaceChildren(...entries.filter((e) => e.kind === 'text').map((e) => noteElement(e, animate)));
   for (const entry of current.entries) seenIds.add(entry.id);
   for (const box of $('notes').querySelectorAll('textarea')) autosize(box);
@@ -741,13 +753,13 @@ function addStrokePoint(e) {
 }
 
 async function finishStroke() {
-  const { points, path } = stroke;
+  const { points, path, size } = stroke;
   stroke = null;
   if (points.length === 2) points.push(points[0], points[1]); // a tap makes a dot
   path.setAttribute('d', pathData(points));
   playWrite(0, 2);
   try {
-    await boardRequest(`/api/boards/${current.code}/entries`, { kind: 'draw', color: pen.color, points });
+    await boardRequest(`/api/boards/${current.code}/entries`, { kind: 'draw', color: pen.color, size, points });
     render();
   } catch (err) {
     toast(err.message);
@@ -775,7 +787,7 @@ function eraseAt(e) {
     if (!entry.mine || erasing.has(entry.id)) continue;
     let hit;
     if (entry.kind === 'draw') {
-      hit = distanceToStroke(entry.points, x, y) <= reach;
+      hit = distanceToStroke(entry.points, x, y) <= reach + widthOf(entry.size) / 2;
     } else {
       const rect = $('notes').querySelector(`[data-id="${entry.id}"]`)?.getBoundingClientRect();
       hit = rect && e.clientX >= rect.left && e.clientX <= rect.right && e.clientY >= rect.top && e.clientY <= rect.bottom;
@@ -799,7 +811,7 @@ surface.addEventListener('pointerdown', (e) => {
   e.preventDefault();
   surface.setPointerCapture(e.pointerId);
   if (mode === 'draw') {
-    stroke = { points: [], path: strokeElement(pen.color, [0, 0]) };
+    stroke = { points: [], size: pen.width, path: strokeElement(pen.color, pen.width, [0, 0]) };
     addStrokePoint(e);
     stroke.path.setAttribute('d', pathData([...stroke.points, ...stroke.points]));
     $('pending').append(stroke.path);
