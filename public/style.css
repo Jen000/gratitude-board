@@ -190,6 +190,14 @@ form.card > .btn { width: 100%; margin-top: 16px; }
 .note-text { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 1.05rem; }
 .note-meta { margin: auto 0 0; display: flex; justify-content: space-between; gap: 10px; font-size: 0.85rem; opacity: 0.75; }
 .note-name { font-weight: 700; overflow-wrap: anywhere; }
-.note-time { flex: none; }
+.note-when { flex: none; }
+.note-actions { display: flex; gap: 14px; font-size: 0.88rem; margin-top: -4px; }
+.note-actions .link { color: inherit; opacity: 0.75; min-height: 28px; }
+.note-actions .link:hover { opacity: 1; }
+.note-edit textarea { background: var(--surface); }
+.note-buttons { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.note-confirm { border-top: 1px solid rgb(128 128 128 / 0.3); padding-top: 10px; }
+.note-question { margin: 0; font-weight: 700; font-size: 0.95rem; }
+.btn-danger { background: var(--error); border-color: var(--error); color: var(--surface); }
 
 .empty { text-align: center; color: var(--muted); padding: 30px 12px; border: 1.5px dashed var(--line); border-radius: var(--radius); }

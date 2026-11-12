@@ -29,15 +29,25 @@ function rememberBoard(code, title) {
   const rest = getBoards().filter((b) => b.code !== code);
   store.set('gb.boards', [{ code, title, visited: Date.now() }, ...rest].slice(0, 12));
 }
+// A private key for this browser. The server uses it to tell which notes are yours to edit or delete.
+let authorKey = store.get('gb.key', '');
+if (typeof authorKey !== 'string' || authorKey.length < 16) {
+  authorKey = Array.from(crypto.getRandomValues(new Uint8Array(24)), (b) => b.toString(16).padStart(2, '0')).join('');
+  store.set('gb.key', authorKey);
+}
 const forgetBoard = (code) => store.set('gb.boards', getBoards().filter((b) => b.code !== code));
 
 // ---------- helpers ----------
 const normalizeCode = (raw) => String(raw || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
 
-async function api(path, body) {
+async function api(path, body, method = body ? 'POST' : 'GET') {
   let res;
   try {
-    res = await fetch(path, body ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) } : undefined);
+    res = await fetch(path, {
+      method,
+      headers: { 'X-Author-Key': authorKey, ...(body && { 'Content-Type': 'application/json' }) },
+      body: body ? JSON.stringify(body) : undefined,
+    });
   } catch {
     throw new Error("Can't reach the board right now. Check your connection and try again.");
   }
@@ -78,6 +88,7 @@ function hueFor(name) {
 let current = null; // board being shown: { code, title, entries }
 let pollTimer = null;
 let seenIds = new Set();
+let busyNote = null; // { id, mode: 'edit' | 'delete' } while someone is editing or confirming a delete
 
 function show(name) {
   for (const [key, node] of Object.entries(views)) node.hidden = key !== name;
@@ -187,6 +198,7 @@ $('create-form').addEventListener('submit', async (e) => {
 function openBoard(board) {
   clearInterval(pollTimer);
   current = board;
+  busyNote = null;
   seenIds = new Set(board.entries.map((entry) => entry.id));
   rememberBoard(board.code, board.title);
   document.title = `${board.title} · Gratitude Board`;
@@ -211,11 +223,8 @@ function renderIdentity(editing = false) {
 
 function renderEntries(entries, { animate = false } = {}) {
   const container = $('entries');
-  const name = getName().trim().toLowerCase();
   const today = dayKey(Date.now());
-  const mineToday = name
-    ? entries.filter((entry) => dayKey(entry.createdAt) === today && entry.name.trim().toLowerCase() === name).length
-    : 0;
+  const mineToday = entries.filter((entry) => entry.mine && dayKey(entry.createdAt) === today).length;
   $('today-status').textContent = mineToday
     ? `You've added ${mineToday === 1 ? 'one' : mineToday} today — add another any time.`
     : '';
@@ -243,8 +252,12 @@ function renderEntries(entries, { animate = false } = {}) {
         const meta = el('p', 'note-meta');
         const time = el('time', 'note-time', new Date(entry.createdAt).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }));
         time.dateTime = new Date(entry.createdAt).toISOString();
-        meta.append(el('span', 'note-name', entry.name), time);
-        note.append(el('p', 'note-text', entry.text), meta);
+        meta.append(el('span', 'note-name', entry.name), el('span', 'note-when'));
+        meta.lastChild.append(time, entry.editedAt ? ' · edited' : '');
+        if (busyNote?.id === entry.id && busyNote.mode === 'edit') note.append(editForm(entry), meta);
+        else note.append(el('p', 'note-text', entry.text), meta);
+        if (entry.mine && busyNote?.id !== entry.id) note.append(noteActions(entry));
+        if (busyNote?.id === entry.id && busyNote.mode === 'delete') note.append(deleteConfirm(entry));
         notes.append(note);
       }
       section.append(el('h2', 'day-label', day.label), notes);
@@ -254,6 +267,97 @@ function renderEntries(entries, { animate = false } = {}) {
   for (const entry of entries) seenIds.add(entry.id);
 }
 
+// ---------- editing and deleting your own notes ----------
+function setBusy(next) {
+  busyNote = next;
+  renderEntries(current.entries);
+}
+
+function noteActions(entry) {
+  const row = el('div', 'note-actions');
+  const edit = el('button', 'link', 'Edit');
+  const del = el('button', 'link', 'Delete');
+  edit.type = del.type = 'button';
+  edit.addEventListener('click', () => {
+    setBusy({ id: entry.id, mode: 'edit' });
+    const box = document.querySelector('.note-edit textarea');
+    box?.focus();
+    box?.setSelectionRange(box.value.length, box.value.length);
+  });
+  del.addEventListener('click', () => {
+    setBusy({ id: entry.id, mode: 'delete' });
+    document.querySelector('.note-confirm button')?.focus();
+  });
+  row.append(edit, del);
+  return row;
+}
+
+// Sends a change for one note, then redraws the board with the server's answer.
+async function changeNote(entry, method, body, errorNode, buttons) {
+  const code = current.code;
+  buttons.forEach((b) => (b.disabled = true));
+  try {
+    const board = await api(`/api/boards/${code}/entries/${entry.id}`, body, method);
+    if (current?.code !== code) return;
+    current = board;
+    setBusy(null);
+  } catch (err) {
+    if (err.status === 404) return refreshNow(); // someone already removed it
+    errorNode.textContent = err.message;
+    buttons.forEach((b) => (b.disabled = false));
+  }
+}
+
+function editForm(entry) {
+  const form = el('form', 'note-edit');
+  const box = el('textarea');
+  box.value = entry.text;
+  box.maxLength = 500;
+  box.rows = Math.min(8, Math.max(3, entry.text.split('\n').length + 1));
+  box.setAttribute('aria-label', 'Edit your note');
+  const error = el('p', 'error');
+  error.setAttribute('role', 'alert');
+  const save = el('button', 'btn btn-small btn-primary', 'Save');
+  const cancel = el('button', 'btn btn-small', 'Cancel');
+  cancel.type = 'button';
+  cancel.addEventListener('click', () => setBusy(null));
+  box.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') setBusy(null);
+    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) form.requestSubmit();
+  });
+  form.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const text = box.value.trim();
+    if (!text) return (error.textContent = 'A note needs some words. To remove it, cancel and choose Delete.');
+    if (text === entry.text) return setBusy(null);
+    changeNote(entry, 'PATCH', { text }, error, [save, cancel]);
+  });
+  const row = el('div', 'note-buttons');
+  row.append(save, cancel);
+  form.append(box, error, row);
+  return form;
+}
+
+function deleteConfirm(entry) {
+  const wrap = el('div', 'note-confirm');
+  const error = el('p', 'error');
+  error.setAttribute('role', 'alert');
+  const yes = el('button', 'btn btn-small btn-danger', 'Delete note');
+  const no = el('button', 'btn btn-small', 'Keep it');
+  yes.type = no.type = 'button';
+  yes.addEventListener('click', () => changeNote(entry, 'DELETE', undefined, error, [yes, no]));
+  no.addEventListener('click', () => setBusy(null));
+  const row = el('div', 'note-buttons');
+  row.append(yes, no);
+  wrap.append(el('p', 'note-question', 'Delete this note for everyone?'), error, row);
+  return wrap;
+}
+
+function refreshNow() {
+  busyNote = null;
+  return refresh();
+}
+
 async function refresh() {
   if (!current || document.hidden) return;
   const code = current.code;
@@ -261,7 +365,8 @@ async function refresh() {
     const board = await api(`/api/boards/${code}`);
     if (current?.code !== code) return; // navigated away while loading
     current = board;
-    renderEntries(board.entries, { animate: true });
+    // Don't redraw underneath someone who is mid-edit; they'll catch up when they finish.
+    if (!busyNote) renderEntries(board.entries, { animate: true });
   } catch {
     // Quietly keep what we have; the next poll will try again.
   }
@@ -296,6 +401,7 @@ $('entry-form').addEventListener('submit', async (e) => {
     const board = await api(`/api/boards/${current.code}/entries`, { name, text });
     setName(name);
     current = board;
+    busyNote = null;
     $('entry-text').value = '';
     renderIdentity();
     renderEntries(board.entries, { animate: true });

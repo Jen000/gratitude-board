@@ -2,7 +2,7 @@
 // Serves the static site in ./public and a small JSON API backed by SQLite.
 import { createServer } from 'node:http';
 import { DatabaseSync } from 'node:sqlite';
-import { randomInt } from 'node:crypto';
+import { randomInt, createHash } from 'node:crypto';
 import { readFile, mkdir } from 'node:fs/promises';
 import { join, extname, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -38,14 +38,21 @@ db.exec(`
   );
   CREATE INDEX IF NOT EXISTS entries_by_board ON entries(board_code, created_at);
 `);
+// Columns added after the first version: who may edit a note, and when it was last edited.
+const entryColumns = new Set(db.prepare('PRAGMA table_info(entries)').all().map((c) => c.name));
+if (!entryColumns.has('author_key')) db.exec('ALTER TABLE entries ADD COLUMN author_key TEXT');
+if (!entryColumns.has('edited_at')) db.exec('ALTER TABLE entries ADD COLUMN edited_at INTEGER');
 
 const q = {
   insertBoard: db.prepare('INSERT INTO boards (code, title, created_at) VALUES (?, ?, ?)'),
   getBoard: db.prepare('SELECT code, title, created_at AS createdAt FROM boards WHERE code = ?'),
   getEntries: db.prepare(
-    'SELECT id, name, text, created_at AS createdAt FROM entries WHERE board_code = ? ORDER BY created_at DESC, id DESC'
+    'SELECT id, name, text, created_at AS createdAt, edited_at AS editedAt, author_key AS authorKey FROM entries WHERE board_code = ? ORDER BY created_at DESC, id DESC'
   ),
-  insertEntry: db.prepare('INSERT INTO entries (board_code, name, text, created_at) VALUES (?, ?, ?, ?)'),
+  insertEntry: db.prepare('INSERT INTO entries (board_code, name, text, created_at, author_key) VALUES (?, ?, ?, ?, ?)'),
+  getEntry: db.prepare('SELECT author_key AS authorKey FROM entries WHERE id = ? AND board_code = ?'),
+  updateEntry: db.prepare('UPDATE entries SET text = ?, edited_at = ? WHERE id = ?'),
+  deleteEntry: db.prepare('DELETE FROM entries WHERE id = ?'),
 };
 
 const newCode = () =>
@@ -100,13 +107,26 @@ async function readJson(req) {
   }
 }
 
-function boardPayload(code) {
+// There are no accounts. Each browser makes up a private key and sends it with every request;
+// a note remembers (a hash of) the key that wrote it, and only that key may edit or delete it.
+function authorKey(req) {
+  const raw = String(req.headers['x-author-key'] || '');
+  return raw.length >= 16 && raw.length <= 200 ? createHash('sha256').update(raw).digest('hex') : null;
+}
+
+function boardPayload(code, key) {
   const board = q.getBoard.get(code);
-  return board ? { ...board, entries: q.getEntries.all(code) } : null;
+  if (!board) return null;
+  const entries = q.getEntries.all(code).map(({ authorKey: owner, ...entry }) => ({
+    ...entry,
+    mine: Boolean(key && owner && owner === key),
+  }));
+  return { ...board, entries };
 }
 
 async function handleApi(req, res, path) {
   const ip = clientIp(req);
+  const key = authorKey(req);
   const parts = path.split('/').filter(Boolean); // ['api', 'boards', code?, 'entries'?]
   if (parts[1] !== 'boards') return send(res, 404, { error: 'Not found.' });
 
@@ -119,7 +139,7 @@ async function handleApi(req, res, path) {
       const code = newCode();
       try {
         q.insertBoard.run(code, title, Date.now());
-        return send(res, 201, boardPayload(code));
+        return send(res, 201, boardPayload(code, key));
       } catch (err) {
         if (!String(err.message).includes('UNIQUE')) throw err; // collision: try another code
       }
@@ -132,7 +152,7 @@ async function handleApi(req, res, path) {
   // GET /api/boards/:code
   if (parts.length === 3 && req.method === 'GET') {
     if (limited(ip, 'read', 600, 600_000)) return send(res, 429, { error: 'Slow down a little and try again.' });
-    const board = boardPayload(code);
+    const board = boardPayload(code, key);
     return board ? send(res, 200, board) : send(res, 404, { error: "We couldn't find a board with that code." });
   }
 
@@ -145,8 +165,27 @@ async function handleApi(req, res, path) {
     const text = clean(body.text, MAX_TEXT, { multiline: true });
     if (!name) return send(res, 400, { error: 'Please add your name.' });
     if (!text) return send(res, 400, { error: 'Write something you are grateful for.' });
-    q.insertEntry.run(code, name, text, Date.now());
-    return send(res, 201, boardPayload(code));
+    q.insertEntry.run(code, name, text, Date.now(), key);
+    return send(res, 201, boardPayload(code, key));
+  }
+
+  // PATCH / DELETE /api/boards/:code/entries/:id — change or remove your own note
+  if (parts.length === 5 && parts[3] === 'entries' && (req.method === 'PATCH' || req.method === 'DELETE')) {
+    if (limited(ip, 'post', 60, 600_000)) return send(res, 429, { error: 'Slow down a little and try again.' });
+    const id = Number(parts[4]);
+    const entry = Number.isInteger(id) ? q.getEntry.get(id, code) : null;
+    if (!entry) return send(res, 404, { error: 'That note is no longer on the board.' });
+    if (!key || entry.authorKey !== key) {
+      return send(res, 403, { error: 'Only the person who wrote a note can change it, from the browser they wrote it in.' });
+    }
+    if (req.method === 'DELETE') {
+      q.deleteEntry.run(id);
+    } else {
+      const text = clean((await readJson(req)).text, MAX_TEXT, { multiline: true });
+      if (!text) return send(res, 400, { error: 'Write something you are grateful for.' });
+      q.updateEntry.run(text, Date.now(), id);
+    }
+    return send(res, 200, boardPayload(code, key));
   }
 
   return send(res, 404, { error: 'Not found.' });
