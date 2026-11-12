@@ -134,20 +134,20 @@ test('drawings are saved as strokes that only their author can erase', async () 
   assert.deepEqual(gone.entries, []);
 });
 
-test('a board is erased after 90 days with nothing new, and any activity restarts the clock', async () => {
+test('a board is erased after 35 days with nothing new, and any activity restarts the clock', async () => {
   const db = new DatabaseSync(join(dataDir, 'gratitude.db'));
   const age = (code, days) => db.prepare('UPDATE boards SET last_active = ? WHERE code = ?').run(Date.now() - days * 86_400_000, code);
   const key = 'jen-browser-key-0123456789';
 
   const kept = await (await post('/api/boards', {})).json();
-  assert.equal(kept.expiresAfterDays, 90);
-  age(kept.code, 89);
+  assert.equal(kept.expiresAfterDays, 35);
+  age(kept.code, 34);
   const written = await (await post(`/api/boards/${kept.code}/entries`, { text: 'Still here' }, key)).json();
-  assert.ok(written.expiresAt > Date.now() + 89 * 86_400_000);
+  assert.ok(written.expiresAt > Date.now() + 34 * 86_400_000);
 
   const lost = await (await post('/api/boards', {})).json();
   await post(`/api/boards/${lost.code}/entries`, { text: 'Old news' }, key);
-  age(lost.code, 91);
+  age(lost.code, 36);
   assert.equal((await fetch(`${base}/api/boards/${lost.code}`)).status, 404);
   assert.equal((await post(`/api/boards/${lost.code}/entries`, { text: 'Too late' }, key)).status, 404);
   assert.equal(db.prepare('SELECT COUNT(*) AS n FROM entries WHERE board_code = ?').get(lost.code).n, 0);

@@ -9,7 +9,7 @@ A shared board where you and your people add one good thing, every day.
 - **No names**: nothing on the board says who wrote or drew what. The server never sends that out.
 - **Move, edit or erase your own work**: drag your writing to move it, tap it to edit, or rub it out with the eraser. Nobody else's can be touched.
 - **Sounds**: a marker noise when something is added, an eraser noise when something is erased, both for an edit. There is a Sound on/off button.
-- **Boards expire**: a board is erased for good after 90 days with nothing added, changed or erased on it.
+- **Boards expire**: a board is erased for good after 35 days with nothing added, changed or erased on it.
 - **The browser remembers you**: your marker, handwriting, writing size, sound setting and the boards you've opened are kept in that browser.
 
 ## Run it
@@ -32,7 +32,7 @@ npm test
 | ---------- | -------- | ---------------------------------------------- |
 | `PORT`     | `3000`   | Port the site listens on                       |
 | `DATA_DIR` | Railway volume if attached, else `./data` | Folder that holds the SQLite file with boards |
-| `BOARD_TTL_DAYS` | `90` | Days with nothing new before a board is erased for good |
+| `BOARD_TTL_DAYS` | `35` | Days with nothing new before a board is erased for good |
 
 ## Putting it online (Railway)
 

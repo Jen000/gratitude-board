@@ -21,7 +21,7 @@ const MAX_TEXT = 500;
 const MAX_BODY_BYTES = 40_000;
 const MAX_STROKE_POINTS = 1500;
 // A board is erased for good once this many days pass with nothing added, changed or erased on it.
-const BOARD_TTL_DAYS = Number(process.env.BOARD_TTL_DAYS) > 0 ? Number(process.env.BOARD_TTL_DAYS) : 90;
+const BOARD_TTL_DAYS = Number(process.env.BOARD_TTL_DAYS) > 0 ? Number(process.env.BOARD_TTL_DAYS) : 35;
 const BOARD_TTL_MS = BOARD_TTL_DAYS * 86_400_000;
 const MAX_ENTRIES_PER_BOARD = 4000; // keeps one board from growing without limit
 // The markers and handwriting people can choose from. The site (public/app.js) offers the same lists.
