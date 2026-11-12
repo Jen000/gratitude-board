@@ -1,0 +1,14 @@
+{
+  "name": "gratitude-board",
+  "version": "1.0.0",
+  "description": "Shared gratitude boards: start one, share the code, add to it every day.",
+  "type": "module",
+  "private": true,
+  "engines": {
+    "node": ">=22.13"
+  },
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test"
+  }
+}
