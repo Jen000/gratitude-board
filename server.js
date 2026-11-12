@@ -9,7 +9,8 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = fileURLToPath(new URL('.', import.meta.url));
 const PUBLIC_DIR = join(ROOT, 'public');
-const DATA_DIR = process.env.DATA_DIR || join(ROOT, 'data');
+// On Railway, an attached volume announces itself through RAILWAY_VOLUME_MOUNT_PATH.
+const DATA_DIR = process.env.DATA_DIR || process.env.RAILWAY_VOLUME_MOUNT_PATH || join(ROOT, 'data');
 const PORT = Number(process.env.PORT) || 3000;
 
 // No 0/O, 1/I/L — codes get read aloud and typed on phones.
@@ -236,4 +237,6 @@ export const server = createServer(async (req, res) => {
   }
 });
 
-server.listen(PORT, () => console.log(`Gratitude Board running at http://localhost:${server.address().port}`));
+server.listen(PORT, () =>
+  console.log(`Gratitude Board running at http://localhost:${server.address().port} (boards stored in ${DATA_DIR})`)
+);

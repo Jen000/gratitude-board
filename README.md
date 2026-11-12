@@ -27,14 +27,17 @@ npm test
 | Variable   | Default  | What it does                                   |
 | ---------- | -------- | ---------------------------------------------- |
 | `PORT`     | `3000`   | Port the site listens on                       |
-| `DATA_DIR` | `./data` | Folder that holds the SQLite file with boards  |
+| `DATA_DIR` | Railway volume if attached, else `./data` | Folder that holds the SQLite file with boards |
 
-## Putting it online
+## Putting it online (Railway)
 
-It's one Node process (`npm start`) plus one SQLite file, so any host that runs Node works
-(Render, Railway, Fly.io, a small VPS). The one thing to get right: point `DATA_DIR` at a
-**persistent disk/volume**. On hosts with a throwaway filesystem the boards would be wiped on
-every redeploy.
+1. In Railway, create a **New Project → Deploy from GitHub repo** and pick this repository.
+   Railway detects Node and runs `npm start`; `railway.json` adds a health check.
+2. Add a **Volume** to the service and mount it at `/data`. The server stores the boards on the
+   attached volume automatically. Without a volume, every redeploy wipes the boards.
+3. Under the service's **Settings → Networking**, choose **Generate Domain** to get a public link.
+
+Any other host that runs Node works too: run `npm start` and point `DATA_DIR` at a persistent disk.
 
 ## How it's put together
 
