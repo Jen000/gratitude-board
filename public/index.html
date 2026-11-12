@@ -51,34 +51,52 @@
         <span class="share-label">Code</span>
         <button type="button" id="copy-code" class="code-chip" title="Copy code"></button>
         <button type="button" id="share-btn" class="btn btn-small">Invite people</button>
+        <button type="button" id="sound-btn" class="btn btn-small" aria-pressed="true">Sound on</button>
       </div>
     </nav>
 
-    <div class="whiteboard">
-      <h1 id="board-title" class="board-title"></h1>
+    <div class="toolbar">
+      <div class="modes" role="group" aria-label="Tool">
+        <button type="button" data-mode="write" aria-pressed="true">Write</button>
+        <button type="button" data-mode="draw" aria-pressed="false">Draw</button>
+        <button type="button" data-mode="erase" aria-pressed="false">Eraser</button>
+      </div>
+      <fieldset class="picker" id="color-field">
+        <legend class="sr-only">Marker colour</legend>
+        <div id="color-picker" class="swatches"></div>
+      </fieldset>
+      <fieldset class="picker" id="font-field">
+        <legend class="sr-only">Handwriting</legend>
+        <div id="font-picker" class="hands"></div>
+      </fieldset>
+    </div>
 
-      <form id="entry-form" class="composer" novalidate>
-        <label for="entry-text" class="print">What are you grateful for today?</label>
-        <textarea id="entry-text" class="ink" name="text" rows="2" maxlength="500" placeholder="Something big, something small…" required></textarea>
-        <p class="error" id="entry-error" role="alert"></p>
-        <div class="tools">
-          <fieldset class="picker">
-            <legend class="print">Marker</legend>
-            <div id="color-picker" class="swatches"></div>
-          </fieldset>
-          <fieldset class="picker">
-            <legend class="print">Handwriting</legend>
-            <div id="font-picker" class="hands"></div>
-          </fieldset>
+    <div class="whiteboard" id="whiteboard">
+      <header class="board-head">
+        <h1 id="board-title" class="board-title"></h1>
+        <p class="print"><span id="hint"></span> <button type="button" id="write-here" class="link">Start writing</button></p>
+        <p id="pan-hint" class="print" hidden>Swipe sideways to see the rest of the board.</p>
+        <p class="print">No names here. Nobody can see who wrote what.</p>
+      </header>
+      <div class="scroller" id="scroller">
+        <div class="sizer">
+          <div class="surface" id="surface" data-mode="write">
+            <svg id="ink" class="ink-layer" aria-hidden="true"><g id="strokes"></g><g id="pending"></g></svg>
+            <div id="notes" aria-live="polite"></div>
+            <form id="draft" class="draft" hidden novalidate>
+              <textarea id="draft-text" class="ink" rows="1" maxlength="500" placeholder="I'm grateful for…"
+                        aria-label="What are you grateful for today?"></textarea>
+              <div class="unscale">
+                <p class="error" id="draft-error" role="alert"></p>
+                <div class="note-buttons">
+                  <button type="submit" class="btn btn-small btn-primary">Write it</button>
+                  <button type="button" id="draft-cancel" class="btn btn-small">Cancel</button>
+                </div>
+              </div>
+            </form>
+          </div>
         </div>
-        <div class="composer-foot">
-          <button type="submit" class="btn btn-primary">Write it on the board</button>
-          <span id="today-status" class="print"></span>
-        </div>
-        <p class="print anon">No names here. Nobody can see who wrote what.</p>
-      </form>
-
-      <section id="entries" aria-live="polite"></section>
+      </div>
     </div>
     <div class="tray" aria-hidden="true">
       <span class="pen" style="--cap:#23262b"></span>
@@ -87,6 +105,7 @@
       <span class="pen" style="--cap:#15803d"></span>
       <span class="eraser"></span>
     </div>
+    <p id="toast" class="toast" role="alert"></p>
   </main>
 
   <!-- ============ Not found ============ -->

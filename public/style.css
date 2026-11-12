@@ -4,6 +4,7 @@
 @font-face { font-family: "Indie Flower"; src: url("/fonts/indie-flower.woff2") format("woff2"); font-display: swap; }
 @font-face { font-family: "Shadows Into Light"; src: url("/fonts/shadows-into-light.woff2") format("woff2"); font-display: swap; }
 @font-face { font-family: "Gloria Hallelujah"; src: url("/fonts/gloria-hallelujah.woff2") format("woff2"); font-display: swap; }
+@font-face { font-family: "Reenie Beanie"; src: url("/fonts/reenie-beanie.woff2") format("woff2"); font-display: swap; }
 @font-face { font-family: "Permanent Marker"; src: url("/fonts/permanent-marker.woff2") format("woff2"); font-display: swap; }
 
 :root {
@@ -42,12 +43,14 @@
 /* marker colours and handwriting, shared by the pickers, the composer and the notes */
 .c-black { --pen: #23262b; } .c-blue { --pen: #1d4fd8; } .c-red { --pen: #d42a2a; } .c-green { --pen: #15803d; }
 .c-purple { --pen: #7c3aed; } .c-orange { --pen: #e2640c; } .c-pink { --pen: #db2777; } .c-teal { --pen: #0d8f8f; }
-.f-caveat { --hand: "Caveat"; --size: 1.8rem; --weight: 600; --lh: 1.15; }
-.f-kalam { --hand: "Kalam"; --size: 1.35rem; --lh: 1.4; }
-.f-indie { --hand: "Indie Flower"; --size: 1.5rem; --lh: 1.3; }
-.f-shadows { --hand: "Shadows Into Light"; --size: 1.6rem; --lh: 1.3; }
-.f-gloria { --hand: "Gloria Hallelujah"; --size: 1.2rem; --lh: 1.6; }
-.f-marker { --hand: "Permanent Marker"; --size: 1.35rem; --lh: 1.35; }
+/* sizes are in board units; the whole board is scaled to fit the screen */
+.f-caveat { --hand: "Caveat"; --size: 2.15rem; --weight: 600; --lh: 1.15; }
+.f-kalam { --hand: "Kalam"; --size: 1.6rem; --lh: 1.4; }
+.f-indie { --hand: "Indie Flower"; --size: 1.8rem; --lh: 1.3; }
+.f-shadows { --hand: "Shadows Into Light"; --size: 1.9rem; --lh: 1.3; }
+.f-gloria { --hand: "Gloria Hallelujah"; --size: 1.4rem; --lh: 1.6; }
+.f-marker { --hand: "Permanent Marker"; --size: 1.6rem; --lh: 1.35; }
+.f-messy { --hand: "Reenie Beanie"; --size: 2.7rem; --lh: 1; }
 .ink {
   color: var(--pen, #23262b);
   font-family: var(--hand, "Caveat"), "Segoe Print", "Bradley Hand", cursive;
@@ -156,14 +159,46 @@ form.card > .btn { width: 100%; margin-top: 16px; }
 }
 .share-status { color: var(--muted); font-size: 0.9rem; }
 
-/* The whiteboard itself is always white, whatever the device theme. */
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
+/* ---------- Tools ---------- */
+.toolbar {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 10px 22px;
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
+  box-shadow: var(--shadow); padding: 10px 14px; margin-bottom: 14px;
+}
+@media (min-width: 760px) { .toolbar { position: sticky; top: 8px; z-index: 30; } }
+.modes { display: flex; border: 1.5px solid var(--ink); border-radius: 999px; overflow: hidden; }
+.modes button {
+  font: 700 0.92rem var(--sans); color: var(--ink); background: transparent; border: 0;
+  padding: 0 16px; min-height: 40px; cursor: pointer;
+}
+.modes button + button { border-left: 1.5px solid var(--ink); }
+.modes button[aria-pressed="true"] { background: var(--ink); color: var(--surface); }
+.modes button:focus-visible { outline-offset: -4px; }
+
+.picker { border: 0; margin: 0; padding: 0; min-width: 0; }
+.swatches, .hands { display: flex; flex-wrap: wrap; gap: 8px; }
+.picker input { position: absolute; opacity: 0; pointer-events: none; }
+.swatch {
+  display: block; width: 32px; height: 32px; border-radius: 50%; cursor: pointer; margin: 0;
+  background: var(--pen); border: 3px solid var(--surface); box-shadow: 0 0 0 1.5px var(--line);
+}
+input:checked + .swatch { box-shadow: 0 0 0 3px var(--pen); }
+input:focus-visible + .swatch, input:focus-visible + .hand { outline: 2.5px solid var(--accent); outline-offset: 3px; }
+.hand {
+  display: flex; align-items: center; justify-content: center; cursor: pointer; margin: 0;
+  min-width: 70px; height: 40px; padding: 0 10px; border-radius: 10px; background: #fbfbfa;
+  border: 1.5px solid #d5d8dd; font-size: calc(var(--size) * 0.68); line-height: 1; white-space: nowrap;
+}
+input:checked + .hand { border-color: var(--pen); box-shadow: 0 0 0 1.5px var(--pen); }
+
+/* ---------- The whiteboard: always white, whatever the device theme ---------- */
 .whiteboard {
   --ink: #26282c; --muted: #7b7f86; --accent: #1d4fd8; --accent-ink: #fff; --error: #b3261e;
+  --s: 1; --inv: 1; --h: 900;
   color-scheme: light;
   color: var(--ink);
-  position: relative;
-  min-height: 70vh;
-  padding: clamp(18px, 4vw, 44px);
   background:
     linear-gradient(115deg, transparent 0 38%, rgb(255 255 255 / 0.9) 46%, transparent 54%),
     radial-gradient(60% 40% at 80% 90%, rgb(120 130 150 / 0.06), transparent 70%),
@@ -174,74 +209,74 @@ form.card > .btn { width: 100%; margin-top: 16px; }
   border-radius: 12px;
   box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.12), inset 0 2px 10px rgb(0 0 0 / 0.07), 0 18px 40px rgb(0 0 0 / 0.22);
 }
-
+.board-head { text-align: center; padding: clamp(16px, 3vw, 30px) 16px 6px; }
 .board-title {
   font-family: "Permanent Marker", "Segoe Print", cursive; font-weight: 400;
-  font-size: clamp(1.9rem, 5.5vw, 3rem); text-align: center; overflow-wrap: anywhere;
-  margin: 0 auto 28px; padding-bottom: 10px; max-width: 22em;
+  font-size: clamp(1.9rem, 5.5vw, 3rem); overflow-wrap: anywhere;
+  margin: 0 auto 12px; padding-bottom: 10px; max-width: 22em;
   background: no-repeat bottom center / min(100%, 340px) 8px
     url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 340 8' preserveAspectRatio='none'%3E%3Cpath d='M3 5c40-4 78 2 118-1s80-3 120 0 60 2 96-1' fill='none' stroke='%2326282c' stroke-width='3' stroke-linecap='round'/%3E%3C/svg%3E");
 }
+.print { font: 400 0.85rem/1.5 var(--sans); color: var(--muted); margin: 0; }
+.print .link { font-weight: 700; color: var(--accent); }
 
-.print { font: 600 0.82rem var(--sans); color: var(--muted); letter-spacing: 0.02em; margin: 0; padding: 0; }
-
-.composer { max-width: 720px; margin: 0 auto 40px; }
-.composer > label { margin: 0 0 4px; font-size: 0.95rem; }
-.composer textarea {
-  display: block; width: 100%; resize: none; overflow: hidden; min-height: 2.6em;
-  background: transparent; border: 0; border-bottom: 2px dashed #c9cdd3; border-radius: 0;
-  padding: 6px 2px 8px;
+/* The writing surface is 1400 units wide and is scaled as one piece, so everyone sees the same layout. */
+.scroller { overflow-x: auto; overflow-y: hidden; overscroll-behavior-x: contain; }
+.sizer { width: calc(1400px * var(--s)); height: calc(var(--h) * 1px * var(--s)); }
+.surface {
+  position: relative; width: 1400px; height: calc(var(--h) * 1px);
+  transform: scale(var(--s)); transform-origin: 0 0; cursor: text;
 }
-.composer textarea:focus-visible { outline: none; border-bottom-color: var(--pen); }
-.composer textarea::placeholder { color: #a5a9b0; opacity: 1; }
+.surface[data-mode="draw"] { cursor: crosshair; touch-action: none; }
+.surface[data-mode="erase"] { cursor: cell; touch-action: none; }
+/* controls inside the scaled surface are scaled back up so they stay finger-sized */
+.unscale { transform: scale(var(--inv)); transform-origin: 0 0; width: max-content; max-width: 90vw; }
 
-.tools { display: flex; flex-wrap: wrap; gap: 14px 32px; margin-top: 16px; }
-.picker { border: 0; margin: 0; padding: 0; min-width: 0; }
-.picker legend { margin-bottom: 8px; }
-.swatches, .hands { display: flex; flex-wrap: wrap; gap: 8px; }
-.picker input { position: absolute; opacity: 0; pointer-events: none; }
-.swatch {
-  display: block; width: 34px; height: 34px; border-radius: 50%; cursor: pointer; margin: 0;
-  background: var(--pen); border: 3px solid #f9faf9; box-shadow: 0 0 0 1.5px #c9cdd3;
-}
-input:checked + .swatch { box-shadow: 0 0 0 3px var(--pen); }
-input:focus-visible + .swatch, input:focus-visible + .hand { outline: 2.5px solid var(--accent); outline-offset: 3px; }
-.hand {
-  display: flex; align-items: center; justify-content: center; cursor: pointer; margin: 0;
-  min-width: 78px; height: 44px; padding: 0 12px; border-radius: 10px;
-  border: 1.5px solid #d5d8dd; font-size: calc(var(--size) * 0.82); line-height: 1; white-space: nowrap;
-}
-input:checked + .hand { border-color: var(--pen); box-shadow: 0 0 0 1.5px var(--pen); }
+.ink-layer { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
+.stroke { fill: none; stroke: var(--pen); stroke-width: 6; stroke-linecap: round; stroke-linejoin: round; }
 
-.composer-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; margin-top: 20px; }
-.anon { margin-top: 12px; font-weight: 400; }
-
-/* ---------- Writing on the board ---------- */
-.day { margin-bottom: 34px; }
-.day-label {
-  font: 400 1.05rem "Permanent Marker", "Segoe Print", cursive; color: #8d9198;
-  margin: 0 0 18px; display: inline-block; padding: 0 2px 2px; border-bottom: 2px solid #b9bdc4;
-  border-radius: 0 0 60% 40% / 0 0 4px 3px; transform: rotate(-1deg);
+.note {
+  position: absolute; width: max-content; max-width: var(--maxw, 460px); padding: 2px 6px; border-radius: 8px;
+  transform: rotate(var(--tilt, 0deg)); transform-origin: left center; pointer-events: none;
 }
-.notes { columns: 3 230px; column-gap: clamp(24px, 4vw, 52px); }
-.note { break-inside: avoid; margin: 0 0 30px; padding: 2px 4px; transform: rotate(var(--tilt, 0deg)); transform-origin: left center; }
-.note.busy { transform: none; }
 .note.fresh { animation: write 0.5s ease-out; }
 @keyframes write { from { opacity: 0; clip-path: inset(0 100% 0 0); } to { opacity: 1; clip-path: inset(0 0 0 0); } }
 @media (prefers-reduced-motion: reduce) { .note.fresh { animation: none; } }
 .note-text { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
 
-.note-actions { display: flex; gap: 14px; margin-top: 4px; }
-.note-actions .link { font: 600 0.78rem var(--sans); color: var(--muted); opacity: 0.75; min-height: 28px; }
-.note-actions .link:hover, .note-actions .link:focus-visible { opacity: 1; color: var(--ink); }
-.note-edit textarea {
-  display: block; width: 100%; resize: vertical; background: #fff;
-  border: 1.5px dashed var(--pen); border-radius: 8px; padding: 6px 8px;
+/* your own writing can be picked up, edited and erased */
+.surface[data-mode="write"] .note.mine { pointer-events: auto; cursor: grab; touch-action: none; user-select: none; }
+.surface[data-mode="write"] .note.mine:hover, .note.selected { outline: 2px dashed #b3b8c0; outline-offset: 2px; }
+.note.dragging { cursor: grabbing !important; z-index: 20; }
+.note.selected { z-index: 20; }
+.note.busy {
+  z-index: 20; transform: none; width: var(--maxw, 460px); cursor: auto !important; user-select: auto !important;
+  background: rgb(255 255 255 / 0.94); box-shadow: 0 0 0 10px rgb(255 255 255 / 0.94);
 }
-.note-buttons { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
-.note-question { margin: 10px 0 0; font: 700 0.9rem var(--sans); color: var(--ink); }
+.note-actions {
+  position: absolute; top: calc(100% + 6px); left: 0; display: flex; gap: 6px;
+}
+.note-actions button {
+  font: 700 0.85rem var(--sans); color: var(--ink); background: #fff; cursor: pointer;
+  border: 1.5px solid #b3b8c0; border-radius: 999px; padding: 0 14px; min-height: 36px;
+}
+.note-edit textarea, .draft textarea {
+  display: block; width: 100%; resize: none; overflow: hidden;
+  background: rgb(255 255 255 / 0.9); border: 0; outline: 2px dashed var(--pen); outline-offset: 2px;
+  border-radius: 6px; padding: 0; margin: 0;
+}
+.note-buttons { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.note-question { margin: 12px 0 0; font: 700 0.9rem var(--sans); color: var(--ink); }
 
-.empty { text-align: center; color: #8d9198; padding: 30px 12px; max-width: 26em; margin: 0 auto; font: 400 1.5rem/1.3 "Caveat", cursive; }
+.draft { position: absolute; z-index: 25; width: var(--maxw, 460px); padding: 2px 6px; }
+.draft textarea::placeholder { color: #a5a9b0; opacity: 1; }
+
+.toast {
+  position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); z-index: 50; margin: 0;
+  background: var(--error); color: #fff; font: 600 0.92rem var(--sans); padding: 10px 16px; border-radius: 10px;
+  max-width: calc(100vw - 32px); box-shadow: var(--shadow);
+}
+.toast:empty { display: none; }
 
 /* the ledge under the board */
 .tray {

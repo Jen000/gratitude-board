@@ -18,10 +18,16 @@ const ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
 const CODE_LENGTH = 6;
 const MAX_TITLE = 60;
 const MAX_TEXT = 500;
-const MAX_BODY_BYTES = 10_000;
+const MAX_BODY_BYTES = 40_000;
+const MAX_STROKE_POINTS = 1500;
 // The markers and handwriting people can choose from. The site (public/app.js) offers the same lists.
 const COLORS = ['black', 'blue', 'red', 'green', 'purple', 'orange', 'pink', 'teal'];
-const FONTS = ['caveat', 'kalam', 'indie', 'shadows', 'gloria', 'marker'];
+const FONTS = ['caveat', 'kalam', 'indie', 'shadows', 'gloria', 'marker', 'messy'];
+// The board is BOARD_WIDTH units wide and grows downward as it fills. A note's x/y is its top-left corner.
+const BOARD_WIDTH = 1400;
+const MAX_X = BOARD_WIDTH - 60;
+const MAX_Y = 20_000;
+const coord = (value, max) => (Number.isFinite(value) ? Math.min(max, Math.max(0, Math.round(value))) : null);
 const pick = (value, allowed) => (allowed.includes(value) ? value : allowed[0]);
 
 await mkdir(DATA_DIR, { recursive: true });
@@ -48,16 +54,32 @@ if (!entryColumns.has('author_key')) db.exec('ALTER TABLE entries ADD COLUMN aut
 if (!entryColumns.has('edited_at')) db.exec('ALTER TABLE entries ADD COLUMN edited_at INTEGER');
 if (!entryColumns.has('color')) db.exec('ALTER TABLE entries ADD COLUMN color TEXT');
 if (!entryColumns.has('font')) db.exec('ALTER TABLE entries ADD COLUMN font TEXT');
+if (!entryColumns.has('path')) db.exec('ALTER TABLE entries ADD COLUMN path TEXT');
+if (!entryColumns.has('x')) {
+  db.exec('ALTER TABLE entries ADD COLUMN x INTEGER; ALTER TABLE entries ADD COLUMN y INTEGER;');
+  // Notes written before people could choose a spot: lay them out in three loose columns.
+  const place = db.prepare('UPDATE entries SET x = ?, y = ? WHERE id = ?');
+  const counts = new Map();
+  for (const { id, board } of db.prepare('SELECT id, board_code AS board FROM entries ORDER BY id').all()) {
+    const n = counts.get(board) || 0;
+    counts.set(board, n + 1);
+    place.run(70 + (n % 3) * 450, 50 + Math.floor(n / 3) * 170, id);
+  }
+}
 
 const q = {
   insertBoard: db.prepare('INSERT INTO boards (code, title, created_at) VALUES (?, ?, ?)'),
   getBoard: db.prepare('SELECT code, title, created_at AS createdAt FROM boards WHERE code = ?'),
   getEntries: db.prepare(
-    'SELECT id, text, color, font, created_at AS createdAt, author_key AS authorKey FROM entries WHERE board_code = ? ORDER BY created_at DESC, id DESC'
+    'SELECT id, text, color, font, x, y, path, author_key AS authorKey FROM entries WHERE board_code = ? ORDER BY id'
   ),
-  insertEntry: db.prepare("INSERT INTO entries (board_code, name, text, color, font, created_at, author_key) VALUES (?, '', ?, ?, ?, ?, ?)"),
-  getEntry: db.prepare('SELECT author_key AS authorKey FROM entries WHERE id = ? AND board_code = ?'),
+  insertEntry: db.prepare("INSERT INTO entries (board_code, name, text, color, font, x, y, created_at, author_key) VALUES (?, '', ?, ?, ?, ?, ?, ?, ?)"),
+  insertDrawing: db.prepare(
+    "INSERT INTO entries (board_code, name, text, color, x, y, path, created_at, author_key) VALUES (?, '', '', ?, ?, ?, ?, ?, ?)"
+  ),
+  getEntry: db.prepare('SELECT author_key AS authorKey, path FROM entries WHERE id = ? AND board_code = ?'),
   updateEntry: db.prepare('UPDATE entries SET text = ?, edited_at = ? WHERE id = ?'),
+  moveEntry: db.prepare('UPDATE entries SET x = ?, y = ? WHERE id = ?'),
   deleteEntry: db.prepare('DELETE FROM entries WHERE id = ?'),
 };
 
@@ -124,11 +146,12 @@ function boardPayload(code, key) {
   const board = q.getBoard.get(code);
   if (!board) return null;
   // Notes are anonymous: nothing about who wrote one leaves the server, except "this one is yours".
-  const entries = q.getEntries.all(code).map(({ authorKey: owner, ...entry }) => ({
+  // An entry is either a piece of writing or one drawn stroke (a list of x,y,x,y,… points).
+  const entries = q.getEntries.all(code).map(({ authorKey: owner, path, text, font, x, y, ...entry }) => ({
     ...entry,
     color: pick(entry.color, COLORS),
-    font: pick(entry.font, FONTS),
     mine: Boolean(key && owner && owner === key),
+    ...(path ? { kind: 'draw', points: JSON.parse(path) } : { kind: 'text', text, font: pick(font, FONTS), x, y }),
   }));
   return { ...board, entries };
 }
@@ -167,18 +190,30 @@ async function handleApi(req, res, path) {
 
   // POST /api/boards/:code/entries — add a gratitude
   if (parts.length === 4 && parts[3] === 'entries' && req.method === 'POST') {
-    if (limited(ip, 'post', 60, 600_000)) return send(res, 429, { error: 'Slow down a little and try again.' });
+    // Generous, because a doodle is many strokes and a household often shares one address.
+    if (limited(ip, 'post', 900, 600_000)) return send(res, 429, { error: 'Slow down a little and try again.' });
     if (!q.getBoard.get(code)) return send(res, 404, { error: "We couldn't find a board with that code." });
     const body = await readJson(req);
+    if (body.kind === 'draw') {
+      const raw = body.points;
+      const ok = Array.isArray(raw) && raw.length >= 4 && raw.length % 2 === 0 && raw.length <= MAX_STROKE_POINTS * 2;
+      const points = ok ? raw.map((v, i) => coord(v, i % 2 ? MAX_Y : BOARD_WIDTH)) : [];
+      if (!ok || points.includes(null)) return send(res, 400, { error: "That drawing couldn't be saved." });
+      q.insertDrawing.run(code, pick(body.color, COLORS), points[0], points[1], JSON.stringify(points), Date.now(), key);
+      return send(res, 201, boardPayload(code, key));
+    }
     const text = clean(body.text, MAX_TEXT, { multiline: true });
     if (!text) return send(res, 400, { error: 'Write something you are grateful for.' });
-    q.insertEntry.run(code, text, pick(body.color, COLORS), pick(body.font, FONTS), Date.now(), key);
+    // No spot given (or nonsense): drop it somewhere near the top of the board.
+    const x = coord(body.x, MAX_X) ?? randomInt(60, 900);
+    const y = coord(body.y, MAX_Y) ?? randomInt(40, 600);
+    q.insertEntry.run(code, text, pick(body.color, COLORS), pick(body.font, FONTS), x, y, Date.now(), key);
     return send(res, 201, boardPayload(code, key));
   }
 
-  // PATCH / DELETE /api/boards/:code/entries/:id — change or remove your own note
+  // PATCH / DELETE /api/boards/:code/entries/:id — reword, move or erase your own note
   if (parts.length === 5 && parts[3] === 'entries' && (req.method === 'PATCH' || req.method === 'DELETE')) {
-    if (limited(ip, 'post', 60, 600_000)) return send(res, 429, { error: 'Slow down a little and try again.' });
+    if (limited(ip, 'post', 900, 600_000)) return send(res, 429, { error: 'Slow down a little and try again.' });
     const id = Number(parts[4]);
     const entry = Number.isInteger(id) ? q.getEntry.get(id, code) : null;
     if (!entry) return send(res, 404, { error: 'That note is no longer on the board.' });
@@ -187,10 +222,21 @@ async function handleApi(req, res, path) {
     }
     if (req.method === 'DELETE') {
       q.deleteEntry.run(id);
+    } else if (entry.path) {
+      return send(res, 400, { error: 'Drawings can be erased, not changed.' });
     } else {
-      const text = clean((await readJson(req)).text, MAX_TEXT, { multiline: true });
-      if (!text) return send(res, 400, { error: 'Write something you are grateful for.' });
-      q.updateEntry.run(text, Date.now(), id);
+      // A change can reword the note, move it, or both.
+      const body = await readJson(req);
+      const x = coord(body.x, MAX_X);
+      const y = coord(body.y, MAX_Y);
+      if (body.text !== undefined) {
+        const text = clean(body.text, MAX_TEXT, { multiline: true });
+        if (!text) return send(res, 400, { error: 'Write something you are grateful for.' });
+        q.updateEntry.run(text, Date.now(), id);
+      } else if (x === null || y === null) {
+        return send(res, 400, { error: 'Nothing to change.' });
+      }
+      if (x !== null && y !== null) q.moveEntry.run(x, y, id);
     }
     return send(res, 200, boardPayload(code, key));
   }
