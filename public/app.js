@@ -11,9 +11,12 @@ const FONTS = [
   ['caveat', 'Quick'], ['kalam', 'Neat'], ['indie', 'Loopy'], ['shadows', 'Tall'],
   ['gloria', 'Bouncy'], ['marker', 'Bold'], ['messy', 'Messy'],
 ];
+const SIZES = [['s', 'Small', 0.7], ['m', 'Medium', 1], ['l', 'Large', 1.45], ['xl', 'Extra large', 2]];
+const zoomOf = (size) => SIZES.find(([id]) => id === size)?.[2] ?? 1;
 // The board is this many units wide for everyone and grows downward as it fills (same number in server.js).
 const BOARD_W = 1400;
-const NOTE_W = 460; // widest a piece of writing gets before it wraps
+const NOTE_W = 460; // widest a piece of medium-sized writing gets before it wraps (bigger writing gets more room)
+const noteWidth = (size, x) => Math.min(NOTE_W * Math.max(1, zoomOf(size)), BOARD_W - x);
 const MAX_STROKE_POINTS = 1500;
 
 // ---------- what the browser remembers ----------
@@ -58,7 +61,8 @@ function remembered(key, options) {
   store.set(key, choice);
   return choice;
 }
-const pen = { color: remembered('gb.color', COLORS), font: remembered('gb.font', FONTS) };
+const pen = { color: remembered('gb.color', COLORS), font: remembered('gb.font', FONTS), size: 'm' };
+if (SIZES.some(([id]) => id === store.get('gb.size', ''))) pen.size = store.get('gb.size', 'm');
 
 // ---------- sounds (made in the browser, no audio files) ----------
 let soundOn = store.get('gb.sound', true) !== false;
@@ -328,10 +332,11 @@ $('create-form').addEventListener('submit', async (e) => {
 const surface = $('surface');
 const draft = $('draft');
 const draftText = $('draft-text');
+let draftSpot = null; // where on the board the writing in progress will go
 
 function buildPicker(container, name, options, render) {
   container.replaceChildren(
-    ...options.flatMap(([id, label]) => {
+    ...options.flatMap(([id, label, extra]) => {
       const input = el('input');
       input.type = 'radio';
       input.name = name;
@@ -343,7 +348,7 @@ function buildPicker(container, name, options, render) {
         store.set(`gb.${name}`, id);
         applyPen();
       });
-      const tag = render(id, label);
+      const tag = render(id, label, extra);
       tag.htmlFor = input.id;
       return [input, tag];
     })
@@ -355,7 +360,8 @@ function applyPen() {
   for (const sample of document.querySelectorAll('.hand')) {
     sample.className = `hand ink c-${pen.color} f-${sample.dataset.font}`;
   }
-  draft.className = `draft c-${pen.color} f-${pen.font}`;
+  draft.className = `draft c-${pen.color} f-${pen.font} s-${pen.size}`;
+  if (draftSpot) draft.style.setProperty('--maxw', `${noteWidth(pen.size, draftSpot.x)}px`);
   if (!draft.hidden) autosize(draftText);
 }
 
@@ -369,6 +375,13 @@ buildPicker($('font-picker'), 'font', FONTS, (id, label) => {
   const sample = el('label', 'hand', label);
   sample.dataset.font = id;
   return sample;
+});
+buildPicker($('size-picker'), 'size', SIZES, (id, label, zoom) => {
+  const option = el('label', 'size', 'A');
+  option.title = label;
+  option.setAttribute('aria-label', `${label} writing`);
+  option.style.setProperty('--px', `${Math.round(11 + zoom * 7)}px`);
+  return option;
 });
 applyPen();
 
@@ -387,6 +400,7 @@ function setMode(next) {
   $('write-here').hidden = mode !== 'write';
   $('color-field').hidden = mode === 'erase';
   $('font-field').hidden = mode !== 'write';
+  $('size-field').hidden = mode !== 'write';
   if (mode !== 'write') {
     closeDraft();
     if (selectedId !== null || busyNote) {
@@ -473,11 +487,11 @@ function render({ animate = false } = {}) {
 
 function noteElement(entry, animate) {
   const busy = busyNote?.id === entry.id ? busyNote.mode : null;
-  const note = el('article', `note c-${entry.color} f-${entry.font}`);
+  const note = el('article', `note c-${entry.color} f-${entry.font} s-${entry.size}`);
   note.dataset.id = entry.id;
   note.style.left = `${entry.x}px`;
   note.style.top = `${entry.y}px`;
-  note.style.setProperty('--maxw', `${Math.min(NOTE_W, BOARD_W - entry.x)}px`);
+  note.style.setProperty('--maxw', `${noteWidth(entry.size, entry.x)}px`);
   // A steady, slightly crooked angle for each note, like real handwriting on a board.
   note.style.setProperty('--tilt', `${(((entry.id * 37) % 7) - 3) * 0.6}deg`);
   if (animate && !seenIds.has(entry.id)) note.classList.add('fresh');
@@ -504,15 +518,13 @@ function boardPoint(e) {
 }
 
 // ---------- writing: tap a spot, type, done ----------
-let draftSpot = null;
 let suppressClick = false; // set after a drag so the click that follows it is ignored
 
 function openDraft(x, y) {
   // The tap marks the middle of the first line; keep the note fully on the board.
-  draftSpot = { x: Math.round(clamp(x - 6, 0, BOARD_W - 260)), y: Math.round(Math.max(0, y - 24)) };
+  draftSpot = { x: Math.round(clamp(x - 6, 0, BOARD_W - 260)), y: Math.round(Math.max(0, y - 24 * zoomOf(pen.size))) };
   draft.style.left = `${draftSpot.x}px`;
   draft.style.top = `${draftSpot.y}px`;
-  draft.style.setProperty('--maxw', `${Math.min(NOTE_W, BOARD_W - draftSpot.x)}px`);
   draft.hidden = false;
   $('draft-error').textContent = '';
   applyPen();
@@ -562,7 +574,7 @@ draft.addEventListener('submit', async (e) => {
   const buttons = [...draft.querySelectorAll('button')];
   buttons.forEach((b) => (b.disabled = true));
   try {
-    await boardRequest(`/api/boards/${current.code}/entries`, { text, color: pen.color, font: pen.font, ...draftSpot });
+    await boardRequest(`/api/boards/${current.code}/entries`, { text, color: pen.color, font: pen.font, size: pen.size, ...draftSpot });
     closeDraft();
     playWrite();
     render({ animate: true });

@@ -35,7 +35,7 @@ test('create a board, add to it, read it back by code', async () => {
   assert.equal(created.title, 'Team Friday');
   assert.deepEqual(created.entries, []);
 
-  const res = await post(`/api/boards/${created.code}/entries`, { name: 'Jen', text: 'Coffee\n\n\n\nand   sunshine', color: 'teal', font: 'gloria', x: 321.4, y: 99999 });
+  const res = await post(`/api/boards/${created.code}/entries`, { name: 'Jen', text: 'Coffee\n\n\n\nand   sunshine', color: 'teal', font: 'gloria', size: 'xl', x: 321.4, y: 99999 });
   assert.equal(res.status, 201);
 
   // Codes are forgiving: lowercase and stray punctuation still find the board.
@@ -45,6 +45,7 @@ test('create a board, add to it, read it back by code', async () => {
   assert.equal('name' in board.entries[0], false);
   assert.equal(board.entries[0].color, 'teal');
   assert.equal(board.entries[0].font, 'gloria');
+  assert.equal(board.entries[0].size, 'xl');
   // It stays where it was put (rounded, and kept on the board).
   assert.equal(board.entries[0].x, 321);
   assert.equal(board.entries[0].y, 20000);
@@ -58,6 +59,7 @@ test('rejects empty entries and unknown codes', async () => {
   const odd = await (await post(`/api/boards/${code}/entries`, { text: 'hi', color: 'url(evil)', font: 'x' })).json();
   assert.equal(odd.entries[0].color, 'black');
   assert.equal(odd.entries[0].font, 'caveat');
+  assert.equal(odd.entries[0].size, 'm');
   assert.ok(Number.isInteger(odd.entries[0].x) && Number.isInteger(odd.entries[0].y));
   assert.equal((await fetch(`${base}/api/boards/ZZZZZZ`)).status, 404);
   assert.equal((await post('/api/boards/ZZZZZZ/entries', { text: 'hi' })).status, 404);

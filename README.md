@@ -4,12 +4,12 @@ A shared board where you and your people add one good thing, every day.
 
 - **Start a board** and get a six-character code (like `5Y87A2`).
 - **Invite people** with the code or the invite link (`/b/CODE`).
-- **Write anywhere on the whiteboard**: tap a spot, pick a marker colour and a handwriting style, and write. Writing can overlap, like on a real board.
+- **Write anywhere on the whiteboard**: tap a spot, pick a marker colour, a handwriting style and a size, and write. Writing can overlap, like on a real board.
 - **Draw** freehand in any marker colour.
 - **No names**: nothing on the board says who wrote or drew what. The server never sends that out.
 - **Move, edit or erase your own work**: drag your writing to move it, tap it to edit, or rub it out with the eraser. Nobody else's can be touched.
 - **Sounds**: a marker noise when something is added, an eraser noise when something is erased, both for an edit. There is a Sound on/off button.
-- **The browser remembers you**: your marker, handwriting, sound setting and the boards you've opened are kept in that browser.
+- **The browser remembers you**: your marker, handwriting, writing size, sound setting and the boards you've opened are kept in that browser.
 
 ## Run it
 

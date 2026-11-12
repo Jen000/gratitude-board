@@ -28,6 +28,7 @@ const BOARD_WIDTH = 1400;
 const MAX_X = BOARD_WIDTH - 60;
 const MAX_Y = 20_000;
 const coord = (value, max) => (Number.isFinite(value) ? Math.min(max, Math.max(0, Math.round(value))) : null);
+const SIZES = ['m', 's', 'l', 'xl']; // medium is the default
 const pick = (value, allowed) => (allowed.includes(value) ? value : allowed[0]);
 
 await mkdir(DATA_DIR, { recursive: true });
@@ -55,6 +56,7 @@ if (!entryColumns.has('edited_at')) db.exec('ALTER TABLE entries ADD COLUMN edit
 if (!entryColumns.has('color')) db.exec('ALTER TABLE entries ADD COLUMN color TEXT');
 if (!entryColumns.has('font')) db.exec('ALTER TABLE entries ADD COLUMN font TEXT');
 if (!entryColumns.has('path')) db.exec('ALTER TABLE entries ADD COLUMN path TEXT');
+if (!entryColumns.has('size')) db.exec('ALTER TABLE entries ADD COLUMN size TEXT');
 if (!entryColumns.has('x')) {
   db.exec('ALTER TABLE entries ADD COLUMN x INTEGER; ALTER TABLE entries ADD COLUMN y INTEGER;');
   // Notes written before people could choose a spot: lay them out in three loose columns.
@@ -71,9 +73,9 @@ const q = {
   insertBoard: db.prepare('INSERT INTO boards (code, title, created_at) VALUES (?, ?, ?)'),
   getBoard: db.prepare('SELECT code, title, created_at AS createdAt FROM boards WHERE code = ?'),
   getEntries: db.prepare(
-    'SELECT id, text, color, font, x, y, path, author_key AS authorKey FROM entries WHERE board_code = ? ORDER BY id'
+    'SELECT id, text, color, font, size, x, y, path, author_key AS authorKey FROM entries WHERE board_code = ? ORDER BY id'
   ),
-  insertEntry: db.prepare("INSERT INTO entries (board_code, name, text, color, font, x, y, created_at, author_key) VALUES (?, '', ?, ?, ?, ?, ?, ?, ?)"),
+  insertEntry: db.prepare("INSERT INTO entries (board_code, name, text, color, font, size, x, y, created_at, author_key) VALUES (?, '', ?, ?, ?, ?, ?, ?, ?, ?)"),
   insertDrawing: db.prepare(
     "INSERT INTO entries (board_code, name, text, color, x, y, path, created_at, author_key) VALUES (?, '', '', ?, ?, ?, ?, ?, ?)"
   ),
@@ -147,11 +149,11 @@ function boardPayload(code, key) {
   if (!board) return null;
   // Notes are anonymous: nothing about who wrote one leaves the server, except "this one is yours".
   // An entry is either a piece of writing or one drawn stroke (a list of x,y,x,y,… points).
-  const entries = q.getEntries.all(code).map(({ authorKey: owner, path, text, font, x, y, ...entry }) => ({
+  const entries = q.getEntries.all(code).map(({ authorKey: owner, path, text, font, size, x, y, ...entry }) => ({
     ...entry,
     color: pick(entry.color, COLORS),
     mine: Boolean(key && owner && owner === key),
-    ...(path ? { kind: 'draw', points: JSON.parse(path) } : { kind: 'text', text, font: pick(font, FONTS), x, y }),
+    ...(path ? { kind: 'draw', points: JSON.parse(path) } : { kind: 'text', text, font: pick(font, FONTS), size: pick(size, SIZES), x, y }),
   }));
   return { ...board, entries };
 }
@@ -207,7 +209,7 @@ async function handleApi(req, res, path) {
     // No spot given (or nonsense): drop it somewhere near the top of the board.
     const x = coord(body.x, MAX_X) ?? randomInt(60, 900);
     const y = coord(body.y, MAX_Y) ?? randomInt(40, 600);
-    q.insertEntry.run(code, text, pick(body.color, COLORS), pick(body.font, FONTS), x, y, Date.now(), key);
+    q.insertEntry.run(code, text, pick(body.color, COLORS), pick(body.font, FONTS), pick(body.size, SIZES), x, y, Date.now(), key);
     return send(res, 201, boardPayload(code, key));
   }
 
