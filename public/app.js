@@ -517,6 +517,7 @@ function openDraft(x, y) {
   $('draft-error').textContent = '';
   applyPen();
   draftText.focus({ preventScroll: true });
+  draft.scrollIntoView({ block: 'nearest' }); // keep it clear of the tools at the bottom of the screen
 }
 function closeDraft() {
   draft.hidden = true;

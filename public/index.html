@@ -55,28 +55,9 @@
       </div>
     </nav>
 
-    <div class="toolbar">
-      <div class="modes" role="group" aria-label="Tool">
-        <button type="button" data-mode="write" aria-pressed="true">Write</button>
-        <button type="button" data-mode="draw" aria-pressed="false">Draw</button>
-        <button type="button" data-mode="erase" aria-pressed="false">Eraser</button>
-      </div>
-      <fieldset class="picker" id="color-field">
-        <legend class="sr-only">Marker colour</legend>
-        <div id="color-picker" class="swatches"></div>
-      </fieldset>
-      <fieldset class="picker" id="font-field">
-        <legend class="sr-only">Handwriting</legend>
-        <div id="font-picker" class="hands"></div>
-      </fieldset>
-    </div>
-
     <div class="whiteboard" id="whiteboard">
       <header class="board-head">
         <h1 id="board-title" class="board-title"></h1>
-        <p class="print"><span id="hint"></span> <button type="button" id="write-here" class="link">Start writing</button></p>
-        <p id="pan-hint" class="print" hidden>Swipe sideways to see the rest of the board.</p>
-        <p class="print">No names here. Nobody can see who wrote what.</p>
       </header>
       <div class="scroller" id="scroller">
         <div class="sizer">
@@ -104,6 +85,30 @@
       <span class="pen" style="--cap:#d42a2a"></span>
       <span class="pen" style="--cap:#15803d"></span>
       <span class="eraser"></span>
+    </div>
+    <!-- Tools and instructions sit under the board and stay at the bottom of the screen. -->
+    <div class="toolbar">
+      <div class="tools">
+        <div class="modes" role="group" aria-label="Tool">
+          <button type="button" data-mode="write" aria-pressed="true">Write</button>
+          <button type="button" data-mode="draw" aria-pressed="false">Draw</button>
+          <button type="button" data-mode="erase" aria-pressed="false">Eraser</button>
+        </div>
+        <fieldset class="picker" id="color-field">
+          <legend class="sr-only">Marker colour</legend>
+          <div id="color-picker" class="swatches"></div>
+        </fieldset>
+        <fieldset class="picker" id="font-field">
+          <legend class="sr-only">Handwriting</legend>
+          <div id="font-picker" class="hands"></div>
+        </fieldset>
+      </div>
+      <p class="help">
+        <span id="hint"></span>
+        <button type="button" id="write-here" class="link">Start writing</button>
+        <span id="pan-hint" hidden>Swipe sideways to see the rest of the board.</span>
+        No names here: nobody can see who wrote what.
+      </p>
     </div>
     <p id="toast" class="toast" role="alert"></p>
   </main>
